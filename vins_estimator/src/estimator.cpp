@@ -83,13 +83,12 @@ void Estimator::clearState()
 
 void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
 {
-    if (!first_imu)
+    if (!first_imu)//第一次进来的时候，记录上一帧的IMU数据
     {
         first_imu = true;
         acc_0 = linear_acceleration;
         gyr_0 = angular_velocity;
     }
-
     if (!pre_integrations[frame_count])
     {
         pre_integrations[frame_count] = new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};

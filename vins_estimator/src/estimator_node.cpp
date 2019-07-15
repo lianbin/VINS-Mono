@@ -39,10 +39,12 @@ bool init_feature = 0;
 bool init_imu = 1;
 double last_imu_t = 0;
 
+//IMU中值积分
+//这里得到的tmp_Q tmp_P tmp_V完全是原始数据积分的结果
 void predict(const sensor_msgs::ImuConstPtr &imu_msg)
 {
     double t = imu_msg->header.stamp.toSec();
-    if (init_imu)
+    if (init_imu)//抛弃第一帧，只保留数据
     {
         latest_time = t;
         init_imu = 0;
@@ -69,13 +71,14 @@ void predict(const sensor_msgs::ImuConstPtr &imu_msg)
     Eigen::Vector3d un_acc_1 = tmp_Q * (linear_acceleration - tmp_Ba) - estimator.g;
 
     Eigen::Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
-
+    
     tmp_P = tmp_P + dt * tmp_V + 0.5 * dt * dt * un_acc;
     tmp_V = tmp_V + dt * un_acc;
 
     acc_0 = linear_acceleration;
     gyr_0 = angular_velocity;
 }
+
 
 void update()
 {
@@ -95,6 +98,9 @@ void update()
 
 }
 
+//一次性获取buf中所有的数据
+//std::vector<std::pair<std::vector<imu数据>, 图像数据>>
+
 std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>>
 getMeasurements()
 {
@@ -105,32 +111,37 @@ getMeasurements()
         if (imu_buf.empty() || feature_buf.empty())
             return measurements;
 
+		//IMU的最新小于等于图像的最老 ，说明目前的IMU与图像数据，没有时间上的重合
         if (!(imu_buf.back()->header.stamp.toSec() > feature_buf.front()->header.stamp.toSec() + estimator.td))
         {
             //ROS_WARN("wait for imu, only should happen at the beginning");
             sum_of_wait++;
             return measurements;
         }
-
+       //IMU的最老数据时间戳大于等于图像时间，也就是IMU数据在图像数据之前。
+       //那么扔掉一个图像帧，然后循环，直到IMU的数据帧时间小于图像的最老时间。
+       //也就是一定要保证IMU数据在图像数据之前
         if (!(imu_buf.front()->header.stamp.toSec() < feature_buf.front()->header.stamp.toSec() + estimator.td))
         {
             ROS_WARN("throw img, only should happen at the beginning");
             feature_buf.pop();
             continue;
         }
+		//获取一帧图像
         sensor_msgs::PointCloudConstPtr img_msg = feature_buf.front();
         feature_buf.pop();
 
+		//获取图像时间戳之前的所有IMU数据
         std::vector<sensor_msgs::ImuConstPtr> IMUs;
         while (imu_buf.front()->header.stamp.toSec() < img_msg->header.stamp.toSec() + estimator.td)
         {
             IMUs.emplace_back(imu_buf.front());
             imu_buf.pop();
         }
-        IMUs.emplace_back(imu_buf.front());
+        IMUs.emplace_back(imu_buf.front());//最后这里push一帧IMU时间戳大于等于图像的时间戳，但是并没有从buf中pop
         if (IMUs.empty())
             ROS_WARN("no imu between two image");
-        measurements.emplace_back(IMUs, img_msg);
+        measurements.emplace_back(IMUs, img_msg);//获取本次测量的IMU数据与图像数据
     }
     return measurements;
 }
@@ -222,11 +233,11 @@ void process()
         {
             auto img_msg = measurement.second;
             double dx = 0, dy = 0, dz = 0, rx = 0, ry = 0, rz = 0;
-            for (auto &imu_msg : measurement.first)
+            for (auto &imu_msg : measurement.first)//轮训图像帧对应的所有Imu数据
             {
                 double t = imu_msg->header.stamp.toSec();
                 double img_t = img_msg->header.stamp.toSec() + estimator.td;
-                if (t <= img_t)
+                if (t <= img_t)//图像时间戳之前的IMU数据
                 { 
                     if (current_time < 0)
                         current_time = t;
@@ -243,7 +254,7 @@ void process()
                     //printf("imu: dt:%f a: %f %f %f w: %f %f %f\n",dt, dx, dy, dz, rx, ry, rz);
 
                 }
-                else
+                else//图像时间戳之后的IMU数据，只有一帧，在获取数据的时候push进去的。
                 {
                     double dt_1 = img_t - current_time;
                     double dt_2 = t - img_t;
