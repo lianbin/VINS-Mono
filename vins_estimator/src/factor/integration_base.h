@@ -29,10 +29,10 @@ class IntegrationBase
 
     void push_back(double dt, const Eigen::Vector3d &acc, const Eigen::Vector3d &gyr)
     {
-        dt_buf.push_back(dt);
-        acc_buf.push_back(acc);
-        gyr_buf.push_back(gyr);
-        propagate(dt, acc, gyr);
+        dt_buf.push_back(dt);     //delta_t序列
+        acc_buf.push_back(acc);   //acc序列
+        gyr_buf.push_back(gyr);   //gyr序列
+        propagate(dt, acc, gyr);  //
     }
 
     void repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg)
@@ -151,7 +151,7 @@ class IntegrationBase
         linearized_ba = result_linearized_ba;
         linearized_bg = result_linearized_bg;
         delta_q.normalize();
-        sum_dt += dt;
+        sum_dt += dt;//累计预积分时间
         acc_0 = acc_1;
         gyr_0 = gyr_1;  
      
@@ -186,11 +186,11 @@ class IntegrationBase
     }
 
     double dt;
-    Eigen::Vector3d acc_0, gyr_0;
-    Eigen::Vector3d acc_1, gyr_1;
+    Eigen::Vector3d acc_0, gyr_0; //上一帧的IMU数据
+    Eigen::Vector3d acc_1, gyr_1; //当前IMU的数据
 
-    const Eigen::Vector3d linearized_acc, linearized_gyr;
-    Eigen::Vector3d linearized_ba, linearized_bg;
+    const Eigen::Vector3d linearized_acc, linearized_gyr; //相当于记录了本次预积分(i->j),i时刻的陀螺与加计的测量
+    Eigen::Vector3d linearized_ba, linearized_bg; //本次预积分的ba bg。
 
     Eigen::Matrix<double, 15, 15> jacobian, covariance;
     Eigen::Matrix<double, 15, 15> step_jacobian;

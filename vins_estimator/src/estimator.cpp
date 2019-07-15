@@ -81,6 +81,7 @@ void Estimator::clearState()
     drift_correct_t = Vector3d::Zero();
 }
 
+//dt是当前IMU数据帧时间戳-上一帧IMU的时间戳
 void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
 {
     if (!first_imu)//第一次进来的时候，记录上一帧的IMU数据
@@ -93,7 +94,7 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
     {
         pre_integrations[frame_count] = new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
     }
-    if (frame_count != 0)
+    if (frame_count != 0)//第一帧图像帧之前不进行预积分的计算
     {
         pre_integrations[frame_count]->push_back(dt, linear_acceleration, angular_velocity);
         //if(solver_flag != NON_LINEAR)
@@ -112,6 +113,7 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
         Ps[j] += dt * Vs[j] + 0.5 * dt * dt * un_acc;
         Vs[j] += dt * un_acc;
     }
+	//始终维护的是上一帧imu数据
     acc_0 = linear_acceleration;
     gyr_0 = angular_velocity;
 }
@@ -130,7 +132,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     ROS_DEBUG("Solving %d", frame_count);
     ROS_DEBUG("number of feature: %d", f_manager.getFeatureCount());
     Headers[frame_count] = header;
-
+    //图像帧
     ImageFrame imageframe(image, header.stamp.toSec());
     imageframe.pre_integration = tmp_pre_integration;
     all_image_frame.insert(make_pair(header.stamp.toSec(), imageframe));
@@ -181,7 +183,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
                 slideWindow();
         }
         else
-            frame_count++;
+            frame_count++; //一直到滑动窗口填满
     }
     else
     {

@@ -2,7 +2,7 @@
 
 double INIT_DEPTH;
 double MIN_PARALLAX;
-double ACC_N, ACC_W;
+double ACC_N, ACC_W;//加计的测量噪声的标准差 随机游走噪声的标准差
 double GYR_N, GYR_W;
 
 std::vector<Eigen::Matrix3d> RIC;
