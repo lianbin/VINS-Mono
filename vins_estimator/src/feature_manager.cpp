@@ -41,7 +41,7 @@ int FeatureManager::getFeatureCount()
     return cnt;
 }
 
-
+//<feature id, vector<camer id,特征点>>
 bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
 {
     ROS_DEBUG("input feature: %d", (int)image.size());
@@ -61,19 +61,20 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
             return it.feature_id == feature_id;
                           });
 
-        if (it == feature.end())
+        if (it == feature.end())//新的特征点
         {
             //记录feature信息<feature_id,在滑动窗口中的哪一帧>
             feature.push_back(FeaturePerId(feature_id, frame_count));
             feature.back().feature_per_frame.push_back(f_per_fra);
         }
-        else if (it->feature_id == feature_id)
+        else if (it->feature_id == feature_id)//已经存在的特征点
         {
-            it->feature_per_frame.push_back(f_per_fra);
-            last_track_num++;
+            it->feature_per_frame.push_back(f_per_fra);//加入新的观测
+            last_track_num++;//相当于统计，跟踪成功的特征点个数
         }
     }
 
+    //当跟踪特征点已经比较少的时候，则marg老的帧
     if (frame_count < 2 || last_track_num < 20)
         return true;
 

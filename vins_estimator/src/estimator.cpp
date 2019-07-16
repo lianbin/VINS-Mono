@@ -220,6 +220,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 bool Estimator::initialStructure()
 {
     TicToc t_sfm;
+	//检测IMU的可观性
     //check imu observibility
     {
         map<double, ImageFrame>::iterator frame_it;
@@ -257,22 +258,23 @@ bool Estimator::initialStructure()
     Vector3d T[frame_count + 1];
     map<int, Vector3d> sfm_tracked_points;
     vector<SFMFeature> sfm_f;
-    for (auto &it_per_id : f_manager.feature)
+    for (auto &it_per_id : f_manager.feature)//所有的特征点
     {
         int imu_j = it_per_id.start_frame - 1;
         SFMFeature tmp_feature;
         tmp_feature.state = false;
         tmp_feature.id = it_per_id.feature_id;
-        for (auto &it_per_frame : it_per_id.feature_per_frame)
+        for (auto &it_per_frame : it_per_id.feature_per_frame)//看到本feature的所有帧
         {
             imu_j++;
-            Vector3d pts_j = it_per_frame.point;
+            Vector3d pts_j = it_per_frame.point;//归一化平面的点
             tmp_feature.observation.push_back(make_pair(imu_j, Eigen::Vector2d{pts_j.x(), pts_j.y()}));
         }
         sfm_f.push_back(tmp_feature);
     } 
     Matrix3d relative_R;
     Vector3d relative_T;
+	//l记录当前窗口中的哪一个帧与最新帧计算R t
     int l;
     if (!relativePose(relative_R, relative_T, l))
     {
@@ -451,6 +453,8 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
     for (int i = 0; i < WINDOW_SIZE; i++)
     {
         vector<pair<Vector3d, Vector3d>> corres;
+		//i->帧编号      WINDOW_SIZE->最新一帧的编号
+		//获取从第i帧一直跟踪到最新帧的特征点
         corres = f_manager.getCorresponding(i, WINDOW_SIZE);
         if (corres.size() > 20)
         {
@@ -458,8 +462,9 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
             double average_parallax;
             for (int j = 0; j < int(corres.size()); j++)
             {
-                Vector2d pts_0(corres[j].first(0), corres[j].first(1));
-                Vector2d pts_1(corres[j].second(0), corres[j].second(1));
+                Vector2d pts_0(corres[j].first(0), corres[j].first(1));   //左图像归一化平面坐标
+                Vector2d pts_1(corres[j].second(0), corres[j].second(1)); //右图像归一化平面坐标
+                //计算相同的特征，在不同帧归一化平面坐标的距离。视差越大，距离越大。
                 double parallax = (pts_0 - pts_1).norm();
                 sum_parallax = sum_parallax + parallax;
 
@@ -467,7 +472,7 @@ bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
             average_parallax = 1.0 * sum_parallax / int(corres.size());
             if(average_parallax * 460 > 30 && m_estimator.solveRelativeRT(corres, relative_R, relative_T))
             {
-                l = i;
+                l = i;//使用第i帧计算与最新帧之间的R T
                 ROS_DEBUG("average_parallax %f choose l %d and newest frame to triangulate the whole structure", average_parallax * 460, l);
                 return true;
             }

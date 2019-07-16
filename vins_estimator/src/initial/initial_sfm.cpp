@@ -127,7 +127,8 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	q[l].y() = 0;
 	q[l].z() = 0;
 	T[l].setZero();
-	q[frame_num - 1] = q[l] * Quaterniond(relative_R);
+	//已经计算出的l帧与最新帧之间的R t
+	q[frame_num - 1] = q[l] * Quaterniond(relative_R);//从这里来看，relative_R = Rln  l-第l帧 n-最新帧
 	T[frame_num - 1] = relative_T;
 	//cout << "init q_l " << q[l].w() << " " << q[l].vec().transpose() << endl;
 	//cout << "init t_l " << T[l].transpose() << endl;
@@ -140,9 +141,10 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	double c_translation[frame_num][3];
 	Eigen::Matrix<double, 3, 4> Pose[frame_num];
 
+    //将第l帧设置为世界坐标系，Pose存的是Rcw 与 tcw
 	c_Quat[l] = q[l].inverse();
-	c_Rotation[l] = c_Quat[l].toRotationMatrix();
-	c_Translation[l] = -1 * (c_Rotation[l] * T[l]);
+	c_Rotation[l] = c_Quat[l].toRotationMatrix();//Rcw
+	c_Translation[l] = -1 * (c_Rotation[l] * T[l]);//tcw
 	Pose[l].block<3, 3>(0, 0) = c_Rotation[l];
 	Pose[l].block<3, 1>(0, 3) = c_Translation[l];
 

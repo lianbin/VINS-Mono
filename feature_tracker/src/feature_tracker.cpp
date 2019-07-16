@@ -208,11 +208,12 @@ void FeatureTracker::rejectWithF()
     }
 }
 
+
 bool FeatureTracker::updateID(unsigned int i)
 {
     if (i < ids.size())
     {
-        if (ids[i] == -1)
+        if (ids[i] == -1)//如果是新检测的特征点，则分配id号。
             ids[i] = n_id++;
         return true;
     }
