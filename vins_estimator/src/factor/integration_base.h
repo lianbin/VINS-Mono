@@ -18,6 +18,7 @@ class IntegrationBase
           sum_dt{0.0}, delta_p{Eigen::Vector3d::Zero()}, delta_q{Eigen::Quaterniond::Identity()}, delta_v{Eigen::Vector3d::Zero()}
 
     {
+        //噪声的协方差矩阵
         noise = Eigen::Matrix<double, 18, 18>::Zero();
         noise.block<3, 3>(0, 0) =  (ACC_N * ACC_N) * Eigen::Matrix3d::Identity();
         noise.block<3, 3>(3, 3) =  (GYR_N * GYR_N) * Eigen::Matrix3d::Identity();
@@ -50,7 +51,22 @@ class IntegrationBase
         for (int i = 0; i < static_cast<int>(dt_buf.size()); i++)
             propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
     }
-
+    //dt:delta_t
+    //_acc_0: 上一时刻的acc
+    //_gyr_0: 上一时刻的gyr
+    //_acc_1: 当前时刻的acc
+    //_gyr_1: 当前时刻的gyr
+    //delta_p:已经积分的位移量
+    //delta_q:已经积分的旋转量
+    //delta_v:已经积分的速度量
+    //linearized_ba:本次积分的ba
+    //linearized_bg：本次积分的bg
+    //result_delta_p ，本次积分之后的累计预计分结果
+    //result_delta_q 同上
+    //result_delta_v 同上
+    //result_linearized_ba 输出的ba
+    //result_linearized_bg 输出的bg
+    //update_jacobian:是否更新jacobian
     void midPointIntegration(double _dt, 
                             const Eigen::Vector3d &_acc_0, const Eigen::Vector3d &_gyr_0,
                             const Eigen::Vector3d &_acc_1, const Eigen::Vector3d &_gyr_1,
@@ -60,11 +76,13 @@ class IntegrationBase
                             Eigen::Vector3d &result_linearized_ba, Eigen::Vector3d &result_linearized_bg, bool update_jacobian)
     {
         //ROS_INFO("midpoint integration");
+        //中值积分
         Vector3d un_acc_0 = delta_q * (_acc_0 - linearized_ba);
         Vector3d un_gyr = 0.5 * (_gyr_0 + _gyr_1) - linearized_bg;
         result_delta_q = delta_q * Quaterniond(1, un_gyr(0) * _dt / 2, un_gyr(1) * _dt / 2, un_gyr(2) * _dt / 2);
         Vector3d un_acc_1 = result_delta_q * (_acc_1 - linearized_ba);
         Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
+		//要注意先更新p再更新v。因为p依赖上一次的v
         result_delta_p = delta_p + delta_v * _dt + 0.5 * un_acc * _dt * _dt;
         result_delta_v = delta_v + un_acc * _dt;
         result_linearized_ba = linearized_ba;
@@ -88,40 +106,67 @@ class IntegrationBase
                 -a_1_x(1), a_1_x(0), 0;
 
             MatrixXd F = MatrixXd::Zero(15, 15);
+			//f11
             F.block<3, 3>(0, 0) = Matrix3d::Identity();
+			//f12
             F.block<3, 3>(0, 3) = -0.25 * delta_q.toRotationMatrix() * R_a_0_x * _dt * _dt + 
                                   -0.25 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt * _dt;
-            F.block<3, 3>(0, 6) = MatrixXd::Identity(3,3) * _dt;
+            //f13
+			F.block<3, 3>(0, 6) = MatrixXd::Identity(3,3) * _dt;
+			//f14
             F.block<3, 3>(0, 9) = -0.25 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt * _dt;
+			//f15
             F.block<3, 3>(0, 12) = -0.25 * result_delta_q.toRotationMatrix() * R_a_1_x * _dt * _dt * -_dt;
+			//f22
             F.block<3, 3>(3, 3) = Matrix3d::Identity() - R_w_x * _dt;
+			//f25
             F.block<3, 3>(3, 12) = -1.0 * MatrixXd::Identity(3,3) * _dt;
+			//f32
             F.block<3, 3>(6, 3) = -0.5 * delta_q.toRotationMatrix() * R_a_0_x * _dt + 
                                   -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * (Matrix3d::Identity() - R_w_x * _dt) * _dt;
+			//f33
             F.block<3, 3>(6, 6) = Matrix3d::Identity();
+			//f34
             F.block<3, 3>(6, 9) = -0.5 * (delta_q.toRotationMatrix() + result_delta_q.toRotationMatrix()) * _dt;
+			//f35
             F.block<3, 3>(6, 12) = -0.5 * result_delta_q.toRotationMatrix() * R_a_1_x * _dt * -_dt;
+			//f44
             F.block<3, 3>(9, 9) = Matrix3d::Identity();
+			//f55
             F.block<3, 3>(12, 12) = Matrix3d::Identity();
             //cout<<"A"<<endl<<A<<endl;
-
+            
             MatrixXd V = MatrixXd::Zero(15,18);
+			//g11
             V.block<3, 3>(0, 0) =  0.25 * delta_q.toRotationMatrix() * _dt * _dt;
-            V.block<3, 3>(0, 3) =  0.25 * -result_delta_q.toRotationMatrix() * R_a_1_x  * _dt * _dt * 0.5 * _dt;
+			//g12
+            V.block<3, 3>(0, 3) =  0.25 * -result_delta_q.toRotationMatrix() * R_a_1_x  * _dt * _dt * 0.5 * _dt;	
+			//g13
             V.block<3, 3>(0, 6) =  0.25 * result_delta_q.toRotationMatrix() * _dt * _dt;
+			//g14=g12
             V.block<3, 3>(0, 9) =  V.block<3, 3>(0, 3);
+			//g22
             V.block<3, 3>(3, 3) =  0.5 * MatrixXd::Identity(3,3) * _dt;
+			//g24
             V.block<3, 3>(3, 9) =  0.5 * MatrixXd::Identity(3,3) * _dt;
+		    //g31
             V.block<3, 3>(6, 0) =  0.5 * delta_q.toRotationMatrix() * _dt;
+			//g32
             V.block<3, 3>(6, 3) =  0.5 * -result_delta_q.toRotationMatrix() * R_a_1_x  * _dt * 0.5 * _dt;
+			//g33
             V.block<3, 3>(6, 6) =  0.5 * result_delta_q.toRotationMatrix() * _dt;
+		    //g34 = g32
             V.block<3, 3>(6, 9) =  V.block<3, 3>(6, 3);
+			//g44
             V.block<3, 3>(9, 12) = MatrixXd::Identity(3,3) * _dt;
+			//g55
             V.block<3, 3>(12, 15) = MatrixXd::Identity(3,3) * _dt;
 
             //step_jacobian = F;
             //step_V = V;
-            jacobian = F * jacobian;
+            //雅克比的迭代更新，得到的是j时刻状态相对于i时刻状态雅克比
+            jacobian = F * jacobian;//jacobian初始为单位阵
+            //协方差的更新
             covariance = F * covariance * F.transpose() + V * noise * V.transpose();
         }
 
@@ -137,7 +182,7 @@ class IntegrationBase
         Vector3d result_delta_v;
         Vector3d result_linearized_ba;
         Vector3d result_linearized_bg;
-
+        //中值积分，以及更新协方差矩阵与雅克比矩阵
         midPointIntegration(_dt, acc_0, gyr_0, _acc_1, _gyr_1, delta_p, delta_q, delta_v,
                             linearized_ba, linearized_bg,
                             result_delta_p, result_delta_q, result_delta_v,
@@ -145,6 +190,7 @@ class IntegrationBase
 
         //checkJacobian(_dt, acc_0, gyr_0, acc_1, gyr_1, delta_p, delta_q, delta_v,
         //                    linearized_ba, linearized_bg);
+        //更新积分结果
         delta_p = result_delta_p;
         delta_q = result_delta_q;
         delta_v = result_delta_v;
@@ -152,6 +198,7 @@ class IntegrationBase
         linearized_bg = result_linearized_bg;
         delta_q.normalize();
         sum_dt += dt;//累计预积分时间
+        //更新IMU上一帧数据
         acc_0 = acc_1;
         gyr_0 = gyr_1;  
      

@@ -51,8 +51,10 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     last_track_num = 0;
     for (auto &id_pts : image)
     {
+        //一个feature
         FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
 
+		//根据feature_id判断当前id是否已经存在
         int feature_id = id_pts.first;
         auto it = find_if(feature.begin(), feature.end(), [feature_id](const FeaturePerId &it)
                           {
@@ -61,6 +63,7 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
 
         if (it == feature.end())
         {
+            //记录feature信息<feature_id,在滑动窗口中的哪一帧>
             feature.push_back(FeaturePerId(feature_id, frame_count));
             feature.back().feature_per_frame.push_back(f_per_fra);
         }

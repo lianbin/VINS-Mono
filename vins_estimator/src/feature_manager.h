@@ -44,8 +44,8 @@ class FeaturePerFrame
 class FeaturePerId
 {
   public:
-    const int feature_id;
-    int start_frame;
+    const int feature_id;//feature的id号
+    int start_frame;     //从哪一帧开始的。
     vector<FeaturePerFrame> feature_per_frame;
 
     int used_num;
