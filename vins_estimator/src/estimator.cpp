@@ -290,7 +290,8 @@ bool Estimator::initialStructure()
         marginalization_flag = MARGIN_OLD;
         return false;
     }
-
+    //计算所有帧的R t。这里疑问的是在初始化的时候，all_image_frame中的帧，应该和窗口中的帧
+    //一致吧？？？？？？
     //solve pnp for all frame
     map<double, ImageFrame>::iterator frame_it;
     map<int, Vector3d>::iterator it;
@@ -301,15 +302,17 @@ bool Estimator::initialStructure()
         cv::Mat r, rvec, t, D, tmp_r;
         if((frame_it->first) == Headers[i].stamp.toSec())
         {
+            //所有帧的位姿表达为Rwi
             frame_it->second.is_key_frame = true;
             frame_it->second.R = Q[i].toRotationMatrix() * RIC[0].transpose();
+			//旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
             frame_it->second.T = T[i];
             i++;
             continue;
         }
         if((frame_it->first) > Headers[i].stamp.toSec())
         {
-            i++;
+            i++; //这里不用continue??
         }
         Matrix3d R_inital = (Q[i].inverse()).toRotationMatrix();
         Vector3d P_inital = - R_inital * T[i];
@@ -369,6 +372,7 @@ bool Estimator::initialStructure()
 
 }
 
+
 bool Estimator::visualInitialAlign()
 {
     TicToc t_g;
@@ -394,6 +398,7 @@ bool Estimator::visualInitialAlign()
     VectorXd dep = f_manager.getDepthVector();
     for (int i = 0; i < dep.size(); i++)
         dep[i] = -1;
+	//清除所有特征点的深度值
     f_manager.clearDepth(dep);
 
     //triangulat on cam pose , no tic
@@ -402,6 +407,7 @@ bool Estimator::visualInitialAlign()
         TIC_TMP[i].setZero();
     ric[0] = RIC[0];
     f_manager.setRic(ric);
+	//相当于重新对所有的特征点进行三角化(观测超过2个的)
     f_manager.triangulate(Ps, &(TIC_TMP[0]), &(RIC[0]));
 
     double s = (x.tail<1>())(0);
@@ -409,9 +415,11 @@ bool Estimator::visualInitialAlign()
     {
         pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
     }
+	//根据尺度初始化所有的平移
     for (int i = frame_count; i >= 0; i--)
         Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
     int kv = -1;
+	//初始化所有关键这的速度
     map<double, ImageFrame>::iterator frame_i;
     for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
     {
@@ -421,6 +429,7 @@ bool Estimator::visualInitialAlign()
             Vs[kv] = frame_i->second.R * x.segment<3>(kv * 3);
         }
     }
+	//根据尺度重新初始化所有的深度
     for (auto &it_per_id : f_manager.feature)
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
@@ -434,6 +443,7 @@ bool Estimator::visualInitialAlign()
     R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
     g = R0 * g;
     //Matrix3d rot_diff = R0 * Rs[0].transpose();
+    //将坐标系从第一图像帧转换到惯性系
     Matrix3d rot_diff = R0;
     for (int i = 0; i <= frame_count; i++)
     {
@@ -488,6 +498,7 @@ void Estimator::solveOdometry()
     if (solver_flag == NON_LINEAR)
     {
         TicToc t_tri;
+		//三角化新提取的特征点
         f_manager.triangulate(Ps, tic, ric);
         ROS_DEBUG("triangulation costs %f", t_tri.toc());
         optimization();
@@ -725,11 +736,12 @@ void Estimator::optimization()
         if (pre_integrations[j]->sum_dt > 10.0)
             continue;
         IMUFactor* imu_factor = new IMUFactor(pre_integrations[j]);
+		//添加一个残差项 i时刻的p v r ba bg,j时刻的p v r ba,bg
         problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
     }
     int f_m_cnt = 0;
     int feature_index = -1;
-    for (auto &it_per_id : f_manager.feature)
+    for (auto &it_per_id : f_manager.feature)//轮训所有的feature
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
@@ -737,7 +749,7 @@ void Estimator::optimization()
  
         ++feature_index;
 
-        int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
+        int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;//
         
         Vector3d pts_i = it_per_id.feature_per_frame[0].point;
 
@@ -879,12 +891,12 @@ void Estimator::optimization()
                 ++feature_index;
 
                 int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
-                if (imu_i != 0)
+                if (imu_i != 0)//保证是第0帧看到的特征,因为就是要marg掉第0帧
                     continue;
 
                 Vector3d pts_i = it_per_id.feature_per_frame[0].point;
 
-                for (auto &it_per_frame : it_per_id.feature_per_frame)
+                for (auto &it_per_frame : it_per_id.feature_per_frame)//所有看到此point的其他关键帧 构建的视觉残差
                 {
                     imu_j++;
                     if (imu_i == imu_j)
@@ -903,6 +915,7 @@ void Estimator::optimization()
                     }
                     else
                     {
+                        //视觉残差
                         ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
                         ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f, loss_function,
                                                                                        vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]},

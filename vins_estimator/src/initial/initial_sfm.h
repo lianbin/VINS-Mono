@@ -40,7 +40,7 @@ struct ReprojectionError3D
     	residuals[1] = yp - T(observed_v);
     	return true;
 	}
-
+    //这里使用的是自动求导的方式
 	static ceres::CostFunction* Create(const double observed_x,
 	                                   const double observed_y) 
 	{

@@ -78,7 +78,7 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4> &Po
 	assert(frame0 != frame1);
 	for (int j = 0; j < feature_num; j++)
 	{
-		if (sfm_f[j].state == true)
+		if (sfm_f[j].state == true)//如果该特征点已经被三角化
 			continue;
 		bool has_0 = false, has_1 = false;
 		Vector2d point0;
@@ -162,6 +162,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		// solve pnp
 		if (i > l)
 		{
+		    //计算帧号大于l的每一帧的位姿
 			Matrix3d R_initial = c_Rotation[i - 1];
 			Vector3d P_initial = c_Translation[i - 1];
 			if(!solveFrameByPnP(R_initial, P_initial, i, sfm_f))
@@ -169,10 +170,11 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 			c_Rotation[i] = R_initial;
 			c_Translation[i] = P_initial;
 			c_Quat[i] = c_Rotation[i];
+			//存储每个帧相对于第l帧的位姿
 			Pose[i].block<3, 3>(0, 0) = c_Rotation[i];
 			Pose[i].block<3, 1>(0, 3) = c_Translation[i];
 		}
-
+        //从l开始到次新帧，分别与最新的一帧三角化点
 		// triangulate point based on the solve pnp result
 		triangulateTwoFrames(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
 	}
@@ -203,6 +205,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 			continue;
 		if ((int)sfm_f[j].observation.size() >= 2)
 		{
+		    //第一个看到的，与最后一个看到的进行三角化
 			Vector2d point0, point1;
 			int frame_0 = sfm_f[j].observation[0].first;
 			point0 = sfm_f[j].observation[0].second;
@@ -261,9 +264,9 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	{
 		if (sfm_f[i].state != true)
 			continue;
-		for (int j = 0; j < int(sfm_f[i].observation.size()); j++)
+		for (int j = 0; j < int(sfm_f[i].observation.size()); j++)//所有观测到本特征的图像帧
 		{
-			int l = sfm_f[i].observation[j].first;
+			int l = sfm_f[i].observation[j].first; //图像帧的帧号
 			ceres::CostFunction* cost_function = ReprojectionError3D::Create(
 												sfm_f[i].observation[j].second.x(),
 												sfm_f[i].observation[j].second.y());
@@ -289,24 +292,28 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 		//cout << "vision only BA not converge " << endl;
 		return false;
 	}
+	//优化之后的值
 	for (int i = 0; i < frame_num; i++)
 	{
 		q[i].w() = c_rotation[i][0]; 
 		q[i].x() = c_rotation[i][1]; 
 		q[i].y() = c_rotation[i][2]; 
 		q[i].z() = c_rotation[i][3]; 
+		//将cw变为wc
 		q[i] = q[i].inverse();
 		//cout << "final  q" << " i " << i <<"  " <<q[i].w() << "  " << q[i].vec().transpose() << endl;
 	}
+	//优化后的平移量，也是从cw变为wc
 	for (int i = 0; i < frame_num; i++)
 	{
 
 		T[i] = -1 * (q[i] * Vector3d(c_translation[i][0], c_translation[i][1], c_translation[i][2]));
 		//cout << "final  t" << " i " << i <<"  " << T[i](0) <<"  "<< T[i](1) <<"  "<< T[i](2) << endl;
 	}
+	//所有跟踪到的特征点	3d坐标
 	for (int i = 0; i < (int)sfm_f.size(); i++)
 	{
-		if(sfm_f[i].state)
+		if(sfm_f[i].state)//键值就是特征点的编号
 			sfm_tracked_points[sfm_f[i].id] = Vector3d(sfm_f[i].position[0], sfm_f[i].position[1], sfm_f[i].position[2]);
 	}
 	return true;

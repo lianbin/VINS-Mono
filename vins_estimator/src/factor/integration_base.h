@@ -35,19 +35,22 @@ class IntegrationBase
         gyr_buf.push_back(gyr);   //gyr序列
         propagate(dt, acc, gyr);  //
     }
-
+    //重新进行预计分计算
     void repropagate(const Eigen::Vector3d &_linearized_ba, const Eigen::Vector3d &_linearized_bg)
     {
         sum_dt = 0.0;
+		//预计分的第一帧IMU测量
         acc_0 = linearized_acc;
         gyr_0 = linearized_gyr;
+		//预计分量清空
         delta_p.setZero();
         delta_q.setIdentity();
         delta_v.setZero();
+		//预计分期间的偏置量
         linearized_ba = _linearized_ba;
         linearized_bg = _linearized_bg;
         jacobian.setIdentity();
-        covariance.setZero();
+        covariance.setZero();//协方差矩阵设置为0
         for (int i = 0; i < static_cast<int>(dt_buf.size()); i++)
             propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
     }

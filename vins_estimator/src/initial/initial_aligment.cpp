@@ -1,5 +1,7 @@
 #include "initial_alignment.h"
 
+//崔华坤visualInitialAlign
+//应该也可以正式的进行最小二乘推导，留作以后推导
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
 {
     Matrix3d A;
@@ -25,14 +27,15 @@ void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
     }
     delta_bg = A.ldlt().solve(b);
     ROS_WARN_STREAM("gyroscope bias initial calibration " << delta_bg.transpose());
-
+    //更新目前滑动窗口内的所有bg,设置为相同的零偏置
     for (int i = 0; i <= WINDOW_SIZE; i++)
         Bgs[i] += delta_bg;
 
     for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end( ); frame_i++)
     {
         frame_j = next(frame_i);
-        frame_j->second.pre_integration->repropagate(Vector3d::Zero(), Bgs[0]);
+		//更新bg之后，重新进行预计分的计算
+        frame_j->second.pre_integration->repropagate(Vector3d::Zero(), Bgs[0]);//
     }
 }
 
@@ -125,7 +128,7 @@ void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vector
 bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x)
 {
     int all_frame_count = all_image_frame.size();
-    int n_state = all_frame_count * 3 + 3 + 1;
+    int n_state = all_frame_count * 3 + 3 + 1;//速度*3+重力*3+尺度
 
     MatrixXd A{n_state, n_state};
     A.setZero();

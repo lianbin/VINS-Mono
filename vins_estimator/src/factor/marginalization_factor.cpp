@@ -5,7 +5,7 @@ void ResidualBlockInfo::Evaluate()
     residuals.resize(cost_function->num_residuals());
 
     std::vector<int> block_sizes = cost_function->parameter_block_sizes();
-    raw_jacobians = new double *[block_sizes.size()];
+    raw_jacobians = new double *[block_sizes.size()];//数组指针
     jacobians.resize(block_sizes.size());
 
     for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
@@ -89,15 +89,17 @@ MarginalizationInfo::~MarginalizationInfo()
 void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block_info)
 {
     factors.emplace_back(residual_block_info);
-
+    //各个参数块的地址
     std::vector<double *> &parameter_blocks = residual_block_info->parameter_blocks;
+	//各个参数块的大小
     std::vector<int> parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
 
+	//循环参数块
     for (int i = 0; i < static_cast<int>(residual_block_info->parameter_blocks.size()); i++)
     {
-        double *addr = parameter_blocks[i];
-        int size = parameter_block_sizes[i];
-        parameter_block_size[reinterpret_cast<long>(addr)] = size;
+        double *addr = parameter_blocks[i];    //参数块的地址
+        int size = parameter_block_sizes[i];   //参数块的大小
+        parameter_block_size[reinterpret_cast<long>(addr)] = size;//参数块对应的地址以及参数快的大小
     }
 
     for (int i = 0; i < static_cast<int>(residual_block_info->drop_set.size()); i++)
