@@ -10,8 +10,9 @@ void ResidualBlockInfo::Evaluate()
 
     for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
     {
+        //resize是Matrix结果中的函数，用以重新定义矩阵的大小
         jacobians[i].resize(cost_function->num_residuals(), block_sizes[i]);
-        raw_jacobians[i] = jacobians[i].data();
+        raw_jacobians[i] = jacobians[i].data();//获取Matrix存储数据的地址
         //dim += block_sizes[i] == 7 ? 6 : block_sizes[i];
     }
     cost_function->Evaluate(parameter_blocks.data(), residuals.data(), raw_jacobians);
