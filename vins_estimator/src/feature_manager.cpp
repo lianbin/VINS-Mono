@@ -51,7 +51,7 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     last_track_num = 0;
     for (auto &id_pts : image)
     {
-        //一个feature
+        //一个feature的信息
         FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
 
 		//根据feature_id判断当前id是否已经存在
@@ -63,24 +63,26 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
 
         if (it == feature.end())//新的特征点
         {
-            //记录feature信息<feature_id,在滑动窗口中的哪一帧>
+            //记录feature信息<feature_id,第一次观测的帧号>
             feature.push_back(FeaturePerId(feature_id, frame_count));
             feature.back().feature_per_frame.push_back(f_per_fra);
         }
         else if (it->feature_id == feature_id)//已经存在的特征点
         {
-            it->feature_per_frame.push_back(f_per_fra);//加入新的观测
+            it->feature_per_frame.push_back(f_per_fra);//加入新的观测信息
             last_track_num++;//相当于统计，跟踪成功的特征点个数
         }
     }
 
-    //当跟踪特征点已经比较少的时候，则marg老的帧
+    //当跟踪特征点已经比较少的时候，则marg老的帧，建立新的关键帧
     if (frame_count < 2 || last_track_num < 20)
         return true;
 
     for (auto &it_per_id : feature)
     {
+        //计算第2最新帧和第3最新帧之间跟踪到的特征点的平均视差
         if (it_per_id.start_frame <= frame_count - 2 &&
+			//该特征被次新帧看到
             it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1)
         {
             parallax_sum += compensatedParallax2(it_per_id, frame_count);
@@ -96,6 +98,7 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
     {
         ROS_DEBUG("parallax_sum: %lf, parallax_num: %d", parallax_sum, parallax_num);
         ROS_DEBUG("current parallax: %lf", parallax_sum / parallax_num * FOCAL_LENGTH);
+		//计算平均视差
         return parallax_sum / parallax_num >= MIN_PARALLAX;
     }
 }
@@ -285,25 +288,27 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
 
         if (it->start_frame != 0)
             it->start_frame--;
-        else
+        else //start_frame = 0 传递深度值，同时start_frame默认还保持为start_frame = 0
         {
             Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  
             it->feature_per_frame.erase(it->feature_per_frame.begin());
             if (it->feature_per_frame.size() < 2)
             {
-                feature.erase(it);
+                feature.erase(it);//只剩下小于2个观测。直接删除掉该feature
                 continue;
             }
             else
             {
+                //传递深度值
                 Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
+				//计算世界点
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
                 Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
                 double dep_j = pts_j(2);
                 if (dep_j > 0)
                     it->estimated_depth = dep_j;
                 else
-                    it->estimated_depth = INIT_DEPTH;
+                    it->estimated_depth = INIT_DEPTH; //默认深度值为INIT_DEPTH
             }
         }
         // remove tracking-lost feature after marginalize
@@ -325,7 +330,7 @@ void FeatureManager::removeBack()
 
         if (it->start_frame != 0)
             it->start_frame--;
-        else
+        else//相当于当start_frame = 0的时候，直接删除掉该feature
         {
             it->feature_per_frame.erase(it->feature_per_frame.begin());
             if (it->feature_per_frame.size() == 0)
@@ -356,16 +361,18 @@ void FeatureManager::removeFront(int frame_count)
     }
 }
 
+//计算第2最新帧和第3最新帧之间跟踪到的特征点的平均视差
 double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int frame_count)
 {
     //check the second last frame is keyframe or not
     //parallax betwwen seconde last frame and third last frame
+    //
     const FeaturePerFrame &frame_i = it_per_id.feature_per_frame[frame_count - 2 - it_per_id.start_frame];
     const FeaturePerFrame &frame_j = it_per_id.feature_per_frame[frame_count - 1 - it_per_id.start_frame];
 
     double ans = 0;
     Vector3d p_j = frame_j.point;
-
+    //归一化平面坐标
     double u_j = p_j(0);
     double v_j = p_j(1);
 
@@ -379,7 +386,7 @@ double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int f
     double dep_i = p_i(2);
     double u_i = p_i(0) / dep_i;
     double v_i = p_i(1) / dep_i;
-    double du = u_i - u_j, dv = v_i - v_j;
+    double du = u_i - u_j, dv = v_i - v_j;//像素差
 
     double dep_i_comp = p_i_comp(2);
     double u_i_comp = p_i_comp(0) / dep_i_comp;

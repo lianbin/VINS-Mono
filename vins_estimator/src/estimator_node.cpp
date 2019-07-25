@@ -100,6 +100,7 @@ void update()
 
 //一次性获取buf中所有的数据
 //std::vector<std::pair<std::vector<imu数据>, 图像数据>>
+//
 
 std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>>
 getMeasurements()
@@ -225,11 +226,11 @@ void process()
         std::unique_lock<std::mutex> lk(m_buf);
         con.wait(lk, [&]
                  {
-            return (measurements = getMeasurements()).size() != 0;
+            return (measurements = getMeasurements()).size() != 0; 
                  });
         lk.unlock();
         m_estimator.lock();
-        for (auto &measurement : measurements)
+        for (auto &measurement : measurements)//
         {
             auto img_msg = measurement.second;
             double dx = 0, dy = 0, dz = 0, rx = 0, ry = 0, rz = 0;

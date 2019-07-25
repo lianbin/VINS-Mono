@@ -96,6 +96,7 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
     }
     if (frame_count != 0)//第一帧图像帧之前不进行预积分的计算
     {
+        //预积分计算
         pre_integrations[frame_count]->push_back(dt, linear_acceleration, angular_velocity);
         //if(solver_flag != NON_LINEAR)
             tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);
@@ -123,18 +124,19 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     ROS_DEBUG("new image coming ------------------------------------------");
     ROS_DEBUG("Adding feature points %lu", image.size());
     if (f_manager.addFeatureCheckParallax(frame_count, image, td))
-        marginalization_flag = MARGIN_OLD;
+        marginalization_flag = MARGIN_OLD;//marg掉最老帧
     else
-        marginalization_flag = MARGIN_SECOND_NEW;
+        marginalization_flag = MARGIN_SECOND_NEW;//marg掉次新帧
 
     ROS_DEBUG("this frame is--------------------%s", marginalization_flag ? "reject" : "accept");
     ROS_DEBUG("%s", marginalization_flag ? "Non-keyframe" : "Keyframe");
     ROS_DEBUG("Solving %d", frame_count);
     ROS_DEBUG("number of feature: %d", f_manager.getFeatureCount());
-    Headers[frame_count] = header;
+    Headers[frame_count] = header;//窗口中的图像时间
     //图像帧
     ImageFrame imageframe(image, header.stamp.toSec());
 	//第一个图像帧对应的pre_integration应该是空的。
+	//在processIMU中计算的预积分
     imageframe.pre_integration = tmp_pre_integration;
     all_image_frame.insert(make_pair(header.stamp.toSec(), imageframe));
     tmp_pre_integration = new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
@@ -695,10 +697,13 @@ void Estimator::optimization()
     ceres::LossFunction *loss_function;
     //loss_function = new ceres::HuberLoss(1.0);
     loss_function = new ceres::CauchyLoss(1.0);
-    for (int i = 0; i < WINDOW_SIZE + 1; i++)
+    for (int i = 0; i < WINDOW_SIZE + 1; i++)//滑动窗口内的所有帧
     {
         ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+		//添加位移和四元数的参数块
         problem.AddParameterBlock(para_Pose[i], SIZE_POSE, local_parameterization);
+		//添加速度与偏置的参数块
+		//为什么添加速度与bias参数快的时候，不需要LocalParameterization？？
         problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
     }
     for (int i = 0; i < NUM_OF_CAM; i++)
@@ -729,14 +734,14 @@ void Estimator::optimization()
         problem.AddResidualBlock(marginalization_factor, NULL,
                                  last_marginalization_parameter_blocks);
     }
-
+    //添加误差项
     for (int i = 0; i < WINDOW_SIZE; i++)
     {
         int j = i + 1;
         if (pre_integrations[j]->sum_dt > 10.0)
             continue;
         IMUFactor* imu_factor = new IMUFactor(pre_integrations[j]);
-		//添加一个残差项 i时刻的p v r ba bg,j时刻的p v r ba,bg
+		//添加一个残差项 i时刻的p v r ba bg参数块地址,j时刻的p v r ba,bg参数块地址
         problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
     }
     int f_m_cnt = 0;
@@ -875,7 +880,7 @@ void Estimator::optimization()
                 IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
                 ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(imu_factor, NULL,
                                                                            vector<double *>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
-                                                                           vector<int>{0, 1});
+                                                                           vector<int>{0, 1});//vector<int>{0, 1} 表示要边缘化掉参数块的哪一个。
                 marginalization_info->addResidualBlockInfo(residual_block_info);
             }
         }
@@ -919,7 +924,7 @@ void Estimator::optimization()
                         ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
                         ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f, loss_function,
                                                                                        vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]},
-                                                                                       vector<int>{0, 3});
+                                                                                       vector<int>{0, 3});//表示要边缘化掉参数块的para_Pose[imu_i]与para_Feature[feature_index]
                         marginalization_info->addResidualBlockInfo(residual_block_info);
                     }
                 }
@@ -1059,6 +1064,7 @@ void Estimator::slideWindow()
             Bas[WINDOW_SIZE] = Bas[WINDOW_SIZE - 1];
             Bgs[WINDOW_SIZE] = Bgs[WINDOW_SIZE - 1];
 
+            //滑动窗口空出最后一个位置
             delete pre_integrations[WINDOW_SIZE];
             pre_integrations[WINDOW_SIZE] = new IntegrationBase{acc_0, gyr_0, Bas[WINDOW_SIZE], Bgs[WINDOW_SIZE]};
 
@@ -1070,7 +1076,7 @@ void Estimator::slideWindow()
             {
                 map<double, ImageFrame>::iterator it_0;
                 it_0 = all_image_frame.find(t_0);
-                delete it_0->second.pre_integration;
+                delete it_0->second.pre_integration;//删除被边缘化的预积分项，节省内存
                 it_0->second.pre_integration = nullptr;
  
                 for (map<double, ImageFrame>::iterator it = all_image_frame.begin(); it != it_0; ++it)

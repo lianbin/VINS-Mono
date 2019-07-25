@@ -60,13 +60,14 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 #endif
 
         Eigen::Map<Eigen::Matrix<double, 15, 1>> residual(residuals);
+        //计算残差
         residual = pre_integration->evaluate(Pi, Qi, Vi, Bai, Bgi,
                                             Pj, Qj, Vj, Baj, Bgj);
 
-        //协方差矩阵的LL^T 分解，并得到L^T
+        //信息矩阵的LL^T 分解，并得到L^T
         Eigen::Matrix<double, 15, 15> sqrt_info = Eigen::LLT<Eigen::Matrix<double, 15, 15>>(pre_integration->covariance.inverse()).matrixL().transpose();
         //sqrt_info.setIdentity();
-        residual = sqrt_info * residual;
+        residual = sqrt_info * residual;//为了符合ceres的要求
 
         if (jacobians)
         {

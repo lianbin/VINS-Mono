@@ -44,9 +44,10 @@ class FeaturePerFrame
 class FeaturePerId
 {
   public:
-    const int feature_id;//feature的id号
-    int start_frame;     //从哪一帧开始的。
-    vector<FeaturePerFrame> feature_per_frame;
+    const int feature_id; //feature的id号
+    int start_frame;      //从哪一帧开始的。
+    //所有观测到
+    vector<FeaturePerFrame> feature_per_frame;//第0元素应该就是第一次观测到本特征的信息
 
     int used_num;
     bool is_outlier;

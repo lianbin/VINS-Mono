@@ -2,11 +2,11 @@
 
 void ResidualBlockInfo::Evaluate()
 {
-    residuals.resize(cost_function->num_residuals());
+    residuals.resize(cost_function->num_residuals());//定义残差项
 
     std::vector<int> block_sizes = cost_function->parameter_block_sizes();
     raw_jacobians = new double *[block_sizes.size()];//数组指针
-    jacobians.resize(block_sizes.size());
+    jacobians.resize(block_sizes.size());//每一个残差项对应跟本残差相关的参数块的雅克比
 
     for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
     {
@@ -15,6 +15,7 @@ void ResidualBlockInfo::Evaluate()
         raw_jacobians[i] = jacobians[i].data();//获取Matrix存储数据的地址
         //dim += block_sizes[i] == 7 ? 6 : block_sizes[i];
     }
+	
     cost_function->Evaluate(parameter_blocks.data(), residuals.data(), raw_jacobians);
 
     //std::vector<int> tmp_idx(block_sizes.size());
@@ -106,15 +107,16 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
     for (int i = 0; i < static_cast<int>(residual_block_info->drop_set.size()); i++)
     {
         double *addr = parameter_blocks[residual_block_info->drop_set[i]];
-        parameter_block_idx[reinterpret_cast<long>(addr)] = 0;
+        parameter_block_idx[reinterpret_cast<long>(addr)] = 0;//i j参数块的地址
     }
 }
 
+//计算与需要被边缘化的节点以及该节点存在联系的节点之间的jacobian
 void MarginalizationInfo::preMarginalize()
 {
-    for (auto it : factors)
+    for (auto it : factors)//轮训所有的ResidualBlockInfo
     {
-        it->Evaluate();
+        it->Evaluate();//计算残差以及雅克比
 
         std::vector<int> block_sizes = it->cost_function->parameter_block_sizes();
         for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
@@ -124,6 +126,7 @@ void MarginalizationInfo::preMarginalize()
             if (parameter_block_data.find(addr) == parameter_block_data.end())
             {
                 double *data = new double[size];
+				//保存优化之后的值
                 memcpy(data, it->parameter_blocks[i], sizeof(double) * size);
                 parameter_block_data[addr] = data;
             }
@@ -141,14 +144,18 @@ int MarginalizationInfo::globalSize(int size) const
     return size == 6 ? 7 : size;
 }
 
+//通过线程加速误差项雅克比的计算
 void* ThreadsConstructA(void* threadsstruct)
 {
     ThreadsStruct* p = ((ThreadsStruct*)threadsstruct);
-    for (auto it : p->sub_factors)
+    for (auto it : p->sub_factors)//划分到本线程的残差项
     {
+        //残差项涉及到的参数块
         for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
         {
+            //参数块对应的A矩阵的位置
             int idx_i = p->parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
+			//参数块的参数大小
             int size_i = p->parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])];
             if (size_i == 7)
                 size_i = 6;
@@ -177,29 +184,29 @@ void* ThreadsConstructA(void* threadsstruct)
 void MarginalizationInfo::marginalize()
 {
     int pos = 0;
-    for (auto &it : parameter_block_idx)
+    for (auto &it : parameter_block_idx)//在这之前parameter_block_idx中first是需要被marg掉的参数地址，second是空
     {
-        it.second = pos;
+        it.second = pos; //需要被marg掉的参数块重新建立索引
         pos += localSize(parameter_block_size[it.first]);
     }
 
-    m = pos;
+    m = pos;//pos所有需要被marg掉的状态的总的维度
 
     for (const auto &it : parameter_block_size)
     {
         if (parameter_block_idx.find(it.first) == parameter_block_idx.end())
         {
-            parameter_block_idx[it.first] = pos;
+            parameter_block_idx[it.first] = pos;//跟需要marg掉的状态相关，但是不被marg掉的状态
             pos += localSize(it.second);
         }
     }
 
-    n = pos - m;
+    n = pos - m; //pos = marg状态维度+跟marg状态有关的状态维度,m=marg状态维度 所以n=跟marg状态有关的维度
 
     //ROS_DEBUG("marginalization, pos: %d, m: %d, n: %d, size: %d", pos, m, n, (int)parameter_block_idx.size());
 
     TicToc t_summing;
-    Eigen::MatrixXd A(pos, pos);
+    Eigen::MatrixXd A(pos, pos);//marg状态维度+跟marg状态有关的状态维度
     Eigen::VectorXd b(pos);
     A.setZero();
     b.setZero();
@@ -240,7 +247,7 @@ void MarginalizationInfo::marginalize()
     {
         threadsstruct[i].sub_factors.push_back(it);
         i++;
-        i = i % NUM_THREADS;
+        i = i % NUM_THREADS; //四个线程。
     }
     for (int i = 0; i < NUM_THREADS; i++)
     {
@@ -289,7 +296,7 @@ void MarginalizationInfo::marginalize()
 
     Eigen::VectorXd S_sqrt = S.cwiseSqrt();
     Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
-
+    //根据A b反解残差以及对应的雅克比
     linearized_jacobians = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
     linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
     //std::cout << A << std::endl
@@ -308,11 +315,15 @@ std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map
 
     for (const auto &it : parameter_block_idx)
     {
-        if (it.second >= m)
+        if (it.second >= m)//与被边缘化的状态量相关的状态
         {
+            //参数快的大小
             keep_block_size.push_back(parameter_block_size[it.first]);
+			//参数块索引
             keep_block_idx.push_back(parameter_block_idx[it.first]);
+			//parameter_block_data
             keep_block_data.push_back(parameter_block_data[it.first]);
+			//滑窗之后的地址
             keep_block_addr.push_back(addr_shift[it.first]);
         }
     }
@@ -343,12 +354,13 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
     //printf("jacobian %x\n", reinterpret_cast<long>(jacobians));
     //printf("residual %x\n", reinterpret_cast<long>(residuals));
     //}
-    int n = marginalization_info->n;
-    int m = marginalization_info->m;
+    int n = marginalization_info->n;//上次跟被marg的变量有关的状态维度
+    int m = marginalization_info->m;//上次被marg掉的状态的维度
     Eigen::VectorXd dx(n);
     for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
     {
         int size = marginalization_info->keep_block_size[i];
+		//索引
         int idx = marginalization_info->keep_block_idx[i] - m;
         Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);
         Eigen::VectorXd x0 = Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);
