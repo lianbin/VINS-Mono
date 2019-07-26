@@ -230,7 +230,7 @@ bool Estimator::initialStructure()
         for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end(); frame_it++)
         {
             double dt = frame_it->second.pre_integration->sum_dt;
-			//预积分的加速度
+			//每个预积分区间的平均加速度
             Vector3d tmp_g = frame_it->second.pre_integration->delta_v / dt;
             sum_g += tmp_g;
         }
@@ -276,7 +276,7 @@ bool Estimator::initialStructure()
     } 
     Matrix3d relative_R;
     Vector3d relative_T;
-	//l记录当前窗口中的哪一个帧与最新帧计算R t
+	//l记录当前窗口中的哪一个帧与最新帧计算R t ，得到的应该是Rln 与 tln ，l->选定帧 n->最新帧
     int l;
     if (!relativePose(relative_R, relative_T, l))
     {
@@ -292,8 +292,10 @@ bool Estimator::initialStructure()
         marginalization_flag = MARGIN_OLD;
         return false;
     }
-    //计算所有帧的R t。这里疑问的是在初始化的时候，all_image_frame中的帧，应该和窗口中的帧
-    //一致吧？？？？？？
+    // 计算所有帧的R t。
+    // 由于并不是第一次视觉初始化就能成功，此时图像帧数目有可能会超过滑动窗口的大小
+    // 所以再视觉初始化的最后，要求出滑动窗口外的帧的位姿
+    // 最后把世界坐标系从帧l的相机坐标系，转到帧l的IMU坐标系
     //solve pnp for all frame
     map<double, ImageFrame>::iterator frame_it;
     map<int, Vector3d>::iterator it;
@@ -304,7 +306,7 @@ bool Estimator::initialStructure()
         cv::Mat r, rvec, t, D, tmp_r;
         if((frame_it->first) == Headers[i].stamp.toSec())
         {
-            //所有帧的位姿表达为Rwi
+            //所有帧的位姿表达为Rwi ，也就是imu的导航状态
             frame_it->second.is_key_frame = true;
             frame_it->second.R = Q[i].toRotationMatrix() * RIC[0].transpose();
 			//旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
@@ -319,24 +321,25 @@ bool Estimator::initialStructure()
         Matrix3d R_inital = (Q[i].inverse()).toRotationMatrix();
         Vector3d P_inital = - R_inital * T[i];
         cv::eigen2cv(R_inital, tmp_r);
-        cv::Rodrigues(tmp_r, rvec);
+        cv::Rodrigues(tmp_r, rvec);//输入 输出都是一个旋转矩阵的时候，到底在做什么？？
         cv::eigen2cv(P_inital, t);
 
-        frame_it->second.is_key_frame = false;
+        frame_it->second.is_key_frame = false;//非关键帧
         vector<cv::Point3f> pts_3_vector;
         vector<cv::Point2f> pts_2_vector;
+		//frame_it->second = map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>> > > points;
         for (auto &id_pts : frame_it->second.points)
         {
-            int feature_id = id_pts.first;
-            for (auto &i_p : id_pts.second)
+            int feature_id = id_pts.first;//特征的id号
+            for (auto &i_p : id_pts.second)//这个循环应该只有一次，只有一个相机
             {
-                it = sfm_tracked_points.find(feature_id);
-                if(it != sfm_tracked_points.end())
+                it = sfm_tracked_points.find(feature_id);//sfm_tracked_points中存储了所有已经三角化的特征点
+                if(it != sfm_tracked_points.end()) //该点已经被三角化了
                 {
                     Vector3d world_pts = it->second;
                     cv::Point3f pts_3(world_pts(0), world_pts(1), world_pts(2));
                     pts_3_vector.push_back(pts_3);
-                    Vector2d img_pts = i_p.second.head<2>();
+                    Vector2d img_pts = i_p.second.head<2>();//归一化平面坐标
                     cv::Point2f pts_2(img_pts(0), img_pts(1));
                     pts_2_vector.push_back(pts_2);
                 }
@@ -349,6 +352,7 @@ bool Estimator::initialStructure()
             ROS_DEBUG("Not enough points for solve pnp !");
             return false;
         }
+		//3d-2d求解R t
         if (! cv::solvePnP(pts_3_vector, pts_2_vector, K, D, rvec, t, 1))
         {
             ROS_DEBUG("solve pnp fail!");
@@ -361,6 +365,7 @@ bool Estimator::initialStructure()
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
         T_pnp = R_pnp * (-T_pnp);
+		//旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
         frame_it->second.R = R_pnp * RIC[0].transpose();
         frame_it->second.T = T_pnp;
     }
@@ -459,6 +464,8 @@ bool Estimator::visualInitialAlign()
     return true;
 }
 
+//从滑动窗口的最新帧开始查找，得到与最新帧之间有超过20个连续跟踪的特征点的帧
+//从左往右查找，为了让选中的帧与最新帧之间的视差相对较大
 bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
 {
     // find previous frame which contians enough correspondance and parallex with newest frame
