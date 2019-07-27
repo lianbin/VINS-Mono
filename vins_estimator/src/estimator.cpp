@@ -365,7 +365,7 @@ bool Estimator::initialStructure()
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
         T_pnp = R_pnp * (-T_pnp);
-		//旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
+		//注意!!!!!旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
         frame_it->second.R = R_pnp * RIC[0].transpose();
         frame_it->second.T = T_pnp;
     }
@@ -385,6 +385,7 @@ bool Estimator::visualInitialAlign()
     TicToc t_g;
     VectorXd x;
     //solve scale
+    //求解重力g在C0坐标系下的表示 以及bgs 与 尺度
     bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
     if(!result)
     {
@@ -405,18 +406,22 @@ bool Estimator::visualInitialAlign()
     VectorXd dep = f_manager.getDepthVector();
     for (int i = 0; i < dep.size(); i++)
         dep[i] = -1;
-	//清除所有特征点的深度值
+	//清除所有特征点的深度值,相当于所有的逆深度都设置为-1
     f_manager.clearDepth(dep);
 
     //triangulat on cam pose , no tic
     Vector3d TIC_TMP[NUM_OF_CAM];
     for(int i = 0; i < NUM_OF_CAM; i++)
-        TIC_TMP[i].setZero();
-    ric[0] = RIC[0];
+        TIC_TMP[i].setZero(); //这里设置tic = 0，是因为目前PS中存的位移，还是
+    ric[0] = RIC[0];          //相机的位移
     f_manager.setRic(ric);
+	
 	//相当于重新对所有的特征点进行三角化(观测超过2个的)
+	//这里之所以要进行三角化，是因为之前特征点的深度是
+	//表示在世界坐标系下的。这里要重新进行三角化，将
+	//特征点的深度表示在第一观测帧下的深度
     f_manager.triangulate(Ps, &(TIC_TMP[0]), &(RIC[0]));
-
+    //由于bg有变化，所以窗口内的帧，重新进行预积分的计算
     double s = (x.tail<1>())(0);
     for (int i = 0; i <= WINDOW_SIZE; i++)
     {
