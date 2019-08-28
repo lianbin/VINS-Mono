@@ -10,7 +10,7 @@ void ResidualBlockInfo::Evaluate()
 
     for (int i = 0; i < static_cast<int>(block_sizes.size()); i++)
     {
-        //resize是Matrix结果中的函数，用以重新定义矩阵的大小
+        //resize是Matrix结构中的函数，用以重新定义矩阵的大小
         jacobians[i].resize(cost_function->num_residuals(), block_sizes[i]);
         raw_jacobians[i] = jacobians[i].data();//获取Matrix存储数据的地址
         //dim += block_sizes[i] == 7 ? 6 : block_sizes[i];
@@ -93,7 +93,7 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
     factors.emplace_back(residual_block_info);
     //各个参数块的地址
     std::vector<double *> &parameter_blocks = residual_block_info->parameter_blocks;
-	//各个参数块的大小
+	//各个参数块的大小 见CERES_ADD_PARAMETER_BLOCK
     std::vector<int> parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
 
 	//循环参数块
@@ -194,9 +194,10 @@ void MarginalizationInfo::marginalize()
 
     for (const auto &it : parameter_block_size)
     {
+        //如果是不需要被marg的状态
         if (parameter_block_idx.find(it.first) == parameter_block_idx.end())
         {
-            parameter_block_idx[it.first] = pos;//跟需要marg掉的状态相关，但是不被marg掉的状态
+            parameter_block_idx[it.first] = pos;//跟需要marg掉的状态相关，但是不被marg掉的那些状态
             pos += localSize(it.second);
         }
     }
@@ -306,6 +307,8 @@ void MarginalizationInfo::marginalize()
     //      (linearized_jacobians.transpose() * linearized_residuals - b).sum());
 }
 
+
+
 std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map<long, double *> &addr_shift)
 {
     std::vector<double *> keep_block_addr;
@@ -376,6 +379,7 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
             }
         }
     }
+	//更新先验残差
     Eigen::Map<Eigen::VectorXd>(residuals, n) = marginalization_info->linearized_residuals + marginalization_info->linearized_jacobians * dx;
     if (jacobians)
     {
@@ -388,6 +392,7 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
                 int idx = marginalization_info->keep_block_idx[i] - m;
                 Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> jacobian(jacobians[i], n, size);
                 jacobian.setZero();
+				//
                 jacobian.leftCols(local_size) = marginalization_info->linearized_jacobians.middleCols(idx, local_size);
             }
         }

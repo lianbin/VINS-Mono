@@ -124,6 +124,8 @@ void FeatureManager::debugShow()
     }
 }
 
+
+//获取对应点
 vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_count_l, int frame_count_r)
 {
     vector<pair<Vector3d, Vector3d>> corres;
@@ -144,6 +146,7 @@ vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_coun
     }
     return corres;
 }
+
 
 void FeatureManager::setDepth(const VectorXd &x)
 {
@@ -190,7 +193,7 @@ void FeatureManager::clearDepth(const VectorXd &x)
 
 VectorXd FeatureManager::getDepthVector()
 {
-    VectorXd dep_vec(getFeatureCount());
+    VectorXd dep_vec(getFeatureCount());//所有的特征
     int feature_index = -1;
     for (auto &it_per_id : feature)
     {
@@ -198,6 +201,7 @@ VectorXd FeatureManager::getDepthVector()
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
             continue;
 #if 1
+        //获取该特征的逆深度
         dep_vec(++feature_index) = 1. / it_per_id.estimated_depth;
 #else
         dep_vec(++feature_index) = it_per_id->estimated_depth;
@@ -238,7 +242,7 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
             //第j个观测帧的位姿
             Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
             Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
-			//得到R0j  ,t0j
+			//得到R0j  ,t0j ，相当于计算出的空间点是在第一次被观测的帧中的相机系下的坐标点
             Eigen::Vector3d t = R0.transpose() * (t1 - t0);
             Eigen::Matrix3d R = R0.transpose() * R1;
             Eigen::Matrix<double, 3, 4> P;
@@ -391,7 +395,7 @@ double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int f
     double dep_i = p_i(2);
     double u_i = p_i(0) / dep_i;
     double v_i = p_i(1) / dep_i;
-    double du = u_i - u_j, dv = v_i - v_j;//像素差
+    double du = u_i - u_j, dv = v_i - v_j;
 
     double dep_i_comp = p_i_comp(2);
     double u_i_comp = p_i_comp(0) / dep_i_comp;

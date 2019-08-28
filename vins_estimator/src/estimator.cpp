@@ -96,9 +96,10 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
     }
     if (frame_count != 0)//第一帧图像帧之前不进行预积分的计算
     {
-        //预积分计算
+        //滑动窗口内的预积分计算与存储
         pre_integrations[frame_count]->push_back(dt, linear_acceleration, angular_velocity);
         //if(solver_flag != NON_LINEAR)
+        //所有帧的预积分计算存储
             tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);
 
         dt_buf[frame_count].push_back(dt);
@@ -558,7 +559,7 @@ void Estimator::vector2double()
 
     VectorXd dep = f_manager.getDepthVector();
     for (int i = 0; i < f_manager.getFeatureCount(); i++)
-        para_Feature[i][0] = dep(i);
+        para_Feature[i][0] = dep(i);//逆深度值
     if (ESTIMATE_TD)
         para_Td[0][0] = td;
 }
@@ -855,10 +856,14 @@ void Estimator::optimization()
         options.max_solver_time_in_seconds = SOLVER_TIME;
     TicToc t_solver;
     ceres::Solver::Summary summary;
+    //ceres::CRSMatrix CRSJacobian;
+    //problem.Evaluate(ceres::Problem::EvaluateOptions(), &gsProcStats.gsCurStates.finalcost, NULL, NULL, &CRSJacobian);
     ceres::Solve(options, &problem, &summary);
     //cout << summary.BriefReport() << endl;
     ROS_DEBUG("Iterations : %d", static_cast<int>(summary.iterations.size()));
     ROS_DEBUG("solver costs: %f", t_solver.toc());
+
+
 
     double2vector();
 
@@ -892,7 +897,7 @@ void Estimator::optimization()
                 IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
                 ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(imu_factor, NULL,
                                                                            vector<double *>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
-                                                                           vector<int>{0, 1});//vector<int>{0, 1} 表示要边缘化掉参数块的哪一个。
+                                                                           vector<int>{0, 1});//vector<int>{0, 1} 表示要边缘化掉参数块（第三个参数）的哪一个。
                 marginalization_info->addResidualBlockInfo(residual_block_info);
             }
         }
@@ -1046,12 +1051,12 @@ void Estimator::optimization()
 void Estimator::slideWindow()
 {
     TicToc t_margin;
-    if (marginalization_flag == MARGIN_OLD)
+    if (marginalization_flag == MARGIN_OLD)//边缘化掉滑动窗口内的最老帧
     {
         double t_0 = Headers[0].stamp.toSec();
         back_R0 = Rs[0];
         back_P0 = Ps[0];
-        if (frame_count == WINDOW_SIZE)
+        if (frame_count == WINDOW_SIZE)//实际窗口内目前一共存在WINDOW_SIZE + 1帧
         {
             for (int i = 0; i < WINDOW_SIZE; i++)
             {

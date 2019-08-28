@@ -78,7 +78,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
     else
         ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::MONO8);
 
-    cv::Mat show_img = ptr->image;
+    cv::Mat show_img = ptr->image; //显示图像用
     TicToc t_r;
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
@@ -106,7 +106,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         bool completed = false;
         for (int j = 0; j < NUM_OF_CAM; j++)
             if (j != 1 || !STEREO_TRACK)
-                completed |= trackerData[j].updateID(i);
+                completed |= trackerData[j].updateID(i);//给新检测到的特征点，分配ID号
         if (!completed)
             break;
     }
@@ -158,12 +158,12 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         feature_points->channels.push_back(velocity_y_of_point);
         ROS_DEBUG("publish %f, at %f", feature_points->header.stamp.toSec(), ros::Time::now().toSec());
         // skip the first image; since no optical speed on frist image
-        if (!init_pub)
+        if (!init_pub)//第一帧还没涉及到跟踪，不会被发布出去
         {
             init_pub = 1;
         }
         else
-            pub_img.publish(feature_points);
+            pub_img.publish(feature_points);//大于等于第二帧，开始发布
 
         if (SHOW_TRACK)
         {

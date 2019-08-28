@@ -53,7 +53,7 @@ class FeatureTracker
     vector<cv::Point2f> prev_pts, cur_pts, forw_pts;//像素坐标
     vector<cv::Point2f> prev_un_pts, cur_un_pts;//归一化平面的坐标
     vector<cv::Point2f> pts_velocity; //归一化平面上的速度
-    vector<int> ids;
+    vector<int> ids;   //记录目前正在跟踪的特征点的id号
     vector<int> track_cnt;
     map<int, cv::Point2f> cur_un_pts_map;
     map<int, cv::Point2f> prev_un_pts_map;
