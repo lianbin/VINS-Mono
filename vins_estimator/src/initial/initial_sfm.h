@@ -18,7 +18,7 @@ struct SFMFeature
     bool state;//是否已经三角化
     int id;//特征的id号
     vector<pair<int,Vector2d>> observation;//<帧号,在该帧中的归一化平面坐标>
-    double position[3];
+    double position[3]; //3d坐标
     double depth;
 };
 

@@ -194,7 +194,7 @@ void MarginalizationInfo::marginalize()
 
     for (const auto &it : parameter_block_size)
     {
-        //如果是不需要被marg的状态
+        //如果是不需要被marg的状态，但是与被marg的状态相关
         if (parameter_block_idx.find(it.first) == parameter_block_idx.end())
         {
             parameter_block_idx[it.first] = pos;//跟需要marg掉的状态相关，但是不被marg掉的那些状态
@@ -275,6 +275,7 @@ void MarginalizationInfo::marginalize()
 
 
     //TODO
+    //使矩阵称为一个完全对称的矩阵
     Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
 
@@ -363,9 +364,9 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
     for (int i = 0; i < static_cast<int>(marginalization_info->keep_block_size.size()); i++)
     {
         int size = marginalization_info->keep_block_size[i];
-		//索引
+		//索引,之前的索引是在包含被边缘化的H矩阵的索引
         int idx = marginalization_info->keep_block_idx[i] - m;
-        Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);
+        Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(parameters[i], size);//(地址，大小)
         Eigen::VectorXd x0 = Eigen::Map<const Eigen::VectorXd>(marginalization_info->keep_block_data[i], size);
         if (size != 7)
             dx.segment(idx, size) = x - x0;

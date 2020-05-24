@@ -55,11 +55,11 @@ class MarginalizationInfo
     std::vector<double *> getParameterBlocks(std::unordered_map<long, double *> &addr_shift);
 
     std::vector<ResidualBlockInfo *> factors;
-    int m, n;//pos所有需要被marg掉的状态的总的维度
+    int m, n;//m- pos所有需要被marg掉的状态的总的维度 n-与被marg状态先关的状态量的维度总数
 	//存储了所有与marg相关的状态变量信息，包括需要被marg掉的。
     std::unordered_map<long, int> parameter_block_size; //global size <参数块的地址，参数块的大小>
     int sum_block_size;
-    std::unordered_map<long, int> parameter_block_idx; //local size  <想要边缘化的参数地址，>
+    std::unordered_map<long, int> parameter_block_idx; //local size  <想要边缘化的参数地址，边缘化相关的状态量在先验矩阵中的位置>
     std::unordered_map<long, double *> parameter_block_data;//边缘化的时候，保存优化之后的值
 
     std::vector<int> keep_block_size; //global size

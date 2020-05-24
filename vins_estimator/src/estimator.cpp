@@ -100,12 +100,12 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
         pre_integrations[frame_count]->push_back(dt, linear_acceleration, angular_velocity);
         //if(solver_flag != NON_LINEAR)
         //所有帧的预积分计算存储
-            tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);
+        tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);
 
         dt_buf[frame_count].push_back(dt);
         linear_acceleration_buf[frame_count].push_back(linear_acceleration);
         angular_velocity_buf[frame_count].push_back(angular_velocity);
-        //使用中值积分，实时更新滑动窗口最新帧的导航状态
+        //使用中值积分，根据IMU的测量，更新导航状态
         int j = frame_count;         
         Vector3d un_acc_0 = Rs[j] * (acc_0 - Bas[j]) - g;
         Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity) - Bgs[j];
@@ -125,7 +125,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     ROS_DEBUG("new image coming ------------------------------------------");
     ROS_DEBUG("Adding feature points %lu", image.size());
     if (f_manager.addFeatureCheckParallax(frame_count, image, td))
-        marginalization_flag = MARGIN_OLD;//marg掉最老帧
+        marginalization_flag = MARGIN_OLD;//marg掉最老帧，最新帧作为关键帧
     else
         marginalization_flag = MARGIN_SECOND_NEW;//marg掉次新帧
 
@@ -295,7 +295,7 @@ bool Estimator::initialStructure()
     }
     // 计算所有帧的R t。
     // 由于并不是第一次视觉初始化就能成功，此时图像帧数目有可能会超过滑动窗口的大小
-    // 所以再视觉初始化的最后，要求出滑动窗口外的帧的位姿
+    // 所以再视觉初始化的最后，要求出滑动窗口外(非关键帧)的帧的位姿
     // 最后把世界坐标系从帧l的相机坐标系，转到帧l的IMU坐标系
     //solve pnp for all frame
     map<double, ImageFrame>::iterator frame_it;
@@ -305,20 +305,24 @@ bool Estimator::initialStructure()
     {
         // provide initial guess
         cv::Mat r, rvec, t, D, tmp_r;
-        if((frame_it->first) == Headers[i].stamp.toSec())
+        if((frame_it->first) == Headers[i].stamp.toSec())//关键帧（存在与窗口之中）
         {
-            //所有帧的位姿表达为Rwi ，也就是imu的导航状态
+            //！！！所有帧的位姿表达为Rwi ，也就是imu的导航状态
             frame_it->second.is_key_frame = true;
             frame_it->second.R = Q[i].toRotationMatrix() * RIC[0].transpose();
-			//旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
+			//！！！旋转已经表达为体坐标系的旋转，平移这里，还是相机坐标系的平移
             frame_it->second.T = T[i];
             i++;
             continue;
         }
+		//如果是非关键帧
         if((frame_it->first) > Headers[i].stamp.toSec())
         {
-            i++; //这里不用continue??
+            i++; //这里加一下打印，看是否能进到此处？个人感觉应该不会进到这里来。
         }
+		//对于不在滑动窗口内的图像帧的处理 
+
+		//给一个初始的Rcw 与 tcw
         Matrix3d R_inital = (Q[i].inverse()).toRotationMatrix();
         Vector3d P_inital = - R_inital * T[i];
         cv::eigen2cv(R_inital, tmp_r);
@@ -329,7 +333,7 @@ bool Estimator::initialStructure()
         vector<cv::Point3f> pts_3_vector;
         vector<cv::Point2f> pts_2_vector;
 		//frame_it->second = map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>> > > points;
-        for (auto &id_pts : frame_it->second.points)
+        for (auto &id_pts : frame_it->second.points)//循环图像帧的所有特征点
         {
             int feature_id = id_pts.first;//特征的id号
             for (auto &i_p : id_pts.second)//这个循环应该只有一次，只有一个相机
@@ -347,7 +351,7 @@ bool Estimator::initialStructure()
             }
         }
         cv::Mat K = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);     
-        if(pts_3_vector.size() < 6)
+        if(pts_3_vector.size() < 6)//该帧被三角化的特征点数量过少，无法进行pnp求解
         {
             cout << "pts_3_vector size " << pts_3_vector.size() << endl;
             ROS_DEBUG("Not enough points for solve pnp !");
@@ -362,15 +366,15 @@ bool Estimator::initialStructure()
         cv::Rodrigues(rvec, r);
         MatrixXd R_pnp,tmp_R_pnp;
         cv::cv2eigen(r, tmp_R_pnp);
-        R_pnp = tmp_R_pnp.transpose();
+        R_pnp = tmp_R_pnp.transpose();//Rwc
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
-        T_pnp = R_pnp * (-T_pnp);
+        T_pnp = R_pnp * (-T_pnp);//tcw
 		//注意!!!!!旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
         frame_it->second.R = R_pnp * RIC[0].transpose();
         frame_it->second.T = T_pnp;
     }
-    if (visualInitialAlign())
+    if (visualInitialAlign())//视觉与IMU对其
         return true;
     else
     {
@@ -395,6 +399,8 @@ bool Estimator::visualInitialAlign()
     }
 
     // change state
+    //Ps Rs中之前存储的是IMU通过累计积分得到的
+    //现在修改为由图像帧计算出来的值
     for (int i = 0; i <= frame_count; i++)
     {
         Matrix3d Ri = all_image_frame[Headers[i].stamp.toSec()].R;
@@ -456,7 +462,7 @@ bool Estimator::visualInitialAlign()
     R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
     g = R0 * g;
     //Matrix3d rot_diff = R0 * Rs[0].transpose();
-    //将坐标系从第一图像帧转换到惯性系
+    //将坐标系从参考帧转换到惯性系
     Matrix3d rot_diff = R0;
     for (int i = 0; i <= frame_count; i++)
     {
@@ -564,6 +570,14 @@ void Estimator::vector2double()
         para_Td[0][0] = td;
 }
 
+/*
+rot_diff是根据滑窗中第一帧在优化前后的yaw偏差计算得到的旋转矩阵，
+之后对滑窗内所有帧都进行rot_diff的校正。这是因为在后端滑动窗口的非线性优化时，
+我们并没有固定住第一帧的位姿不变，而是将其作为优化变量进行调整。
+但是，因为相机的偏航角yaw是不可观测的，
+也就是说对于任意的yaw都满足优化目标函数，
+因此优化之后我们将偏航角旋转至优化前的初始状态
+*/
 void Estimator::double2vector()
 {
     Vector3d origin_R0 = Utility::R2ypr(Rs[0]);
@@ -703,6 +717,11 @@ bool Estimator::failureDetection()
     return false;
 }
 
+/*
+用户在调用AddResidualBlock( )时其实已经隐式地向Problem传递了参数模块，
+但在一些情况下，需要用户显示地向Problem传入参数模块（通常出现在需要对优化参数进行重新参数化的情况）。
+Ceres提供了Problem::AddParameterBlock( )函数用于用户显式传递参数模块：
+*/
 
 void Estimator::optimization()
 {
@@ -739,7 +758,11 @@ void Estimator::optimization()
 
     TicToc t_whole, t_prepare;
     vector2double();
+    //个人猜测，优化状态量的顺序是根据AddResidualBlock的顺序进行排列的。
+    //所以在优化的时候，先添加跟先验误差，这样可以保持与之前被边缘化的状态量在前面。
 
+	//在ceres中，因为要给入的必须是误差。所以通过将先验构建为一个误差项。在优化的时候
+	//计算雅克比以及误差。
     if (last_marginalization_info)
     {
         // construct new marginlization_factor
@@ -769,7 +792,7 @@ void Estimator::optimization()
 
         int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;//
         
-        Vector3d pts_i = it_per_id.feature_per_frame[0].point;
+        Vector3d pts_i = it_per_id.feature_per_frame[0].point;//特征点在起始帧中的归一化平面坐标
 
         for (auto &it_per_frame : it_per_id.feature_per_frame)
         {
@@ -778,7 +801,7 @@ void Estimator::optimization()
             {
                 continue;
             }
-            Vector3d pts_j = it_per_frame.point;
+            Vector3d pts_j = it_per_frame.point;//被其他帧观测到的归一化平面坐标
             if (ESTIMATE_TD)
             {
                     ProjectionTdFactor *f_td = new ProjectionTdFactor(pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
@@ -797,6 +820,7 @@ void Estimator::optimization()
             }
             else
             {
+                //添加误差项
                 ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
                 problem.AddResidualBlock(f, loss_function, para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]);
             }
@@ -873,7 +897,7 @@ void Estimator::optimization()
         MarginalizationInfo *marginalization_info = new MarginalizationInfo();
         vector2double();
 
-        if (last_marginalization_info)
+        if (last_marginalization_info) //之前是否存在先验信息
         {
             vector<int> drop_set;
             for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++)
@@ -897,7 +921,7 @@ void Estimator::optimization()
                 IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
                 ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(imu_factor, NULL,
                                                                            vector<double *>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
-                                                                           vector<int>{0, 1});//vector<int>{0, 1} 表示要边缘化掉参数块（第三个参数）的哪一个。
+                                                                           vector<int>{0, 1});//vector<int>{0, 1} 表示要边缘化掉参数块（第三个参数中）的哪一个。
                 marginalization_info->addResidualBlockInfo(residual_block_info);
             }
         }
@@ -1091,18 +1115,20 @@ void Estimator::slideWindow()
 
             if (true || solver_flag == INITIAL)
             {
+                
                 map<double, ImageFrame>::iterator it_0;
                 it_0 = all_image_frame.find(t_0);
-                delete it_0->second.pre_integration;//删除被边缘化的预积分项，节省内存
+				//删除被边缘化的预积分项，节省内存
+                delete it_0->second.pre_integration;
                 it_0->second.pre_integration = nullptr;
- 
+                //删除掉被边缘化的最老帧之前的所有积分项，用以节省内存
                 for (map<double, ImageFrame>::iterator it = all_image_frame.begin(); it != it_0; ++it)
                 {
                     if (it->second.pre_integration)
                         delete it->second.pre_integration;
                     it->second.pre_integration = NULL;
                 }
-
+                //删除掉包括最老帧以及之前的所有帧信息
                 all_image_frame.erase(all_image_frame.begin(), it_0);
                 all_image_frame.erase(t_0);
 
@@ -1112,28 +1138,33 @@ void Estimator::slideWindow()
     }
     else
     {
+        //边缘化掉次新帧
         if (frame_count == WINDOW_SIZE)
         {
+            //因为要marg掉的是次新帧，次新帧对应的index是frame_count - 1。
+            //既然要去掉次新帧，所有要将次新帧->最新帧之间的预积分，累计到原来次新帧的预积分上。
             for (unsigned int i = 0; i < dt_buf[frame_count].size(); i++)
             {
+                //最新帧的预积分对应的imu数据
                 double tmp_dt = dt_buf[frame_count][i];
                 Vector3d tmp_linear_acceleration = linear_acceleration_buf[frame_count][i];
                 Vector3d tmp_angular_velocity = angular_velocity_buf[frame_count][i];
-
+                //在次新帧的基础上继续进行预积分
                 pre_integrations[frame_count - 1]->push_back(tmp_dt, tmp_linear_acceleration, tmp_angular_velocity);
 
+				//将数据累计到预积分数据集合中去
                 dt_buf[frame_count - 1].push_back(tmp_dt);
                 linear_acceleration_buf[frame_count - 1].push_back(tmp_linear_acceleration);
                 angular_velocity_buf[frame_count - 1].push_back(tmp_angular_velocity);
             }
-
+            //最新帧现在变化为次新帧，取代原来的次新帧
             Headers[frame_count - 1] = Headers[frame_count];
             Ps[frame_count - 1] = Ps[frame_count];
             Vs[frame_count - 1] = Vs[frame_count];
             Rs[frame_count - 1] = Rs[frame_count];
             Bas[frame_count - 1] = Bas[frame_count];
             Bgs[frame_count - 1] = Bgs[frame_count];
-
+            
             delete pre_integrations[WINDOW_SIZE];
             pre_integrations[WINDOW_SIZE] = new IntegrationBase{acc_0, gyr_0, Bas[WINDOW_SIZE], Bgs[WINDOW_SIZE]};
 

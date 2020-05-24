@@ -9,7 +9,7 @@
 
 #include <ceres/ceres.h>
 
-//7 9 7 9分别对应四个待优化的参数快
+//7 9 7 9分别对应四个待优化的参数快Pi Ri  vi bai bgi  Pj Rj  vj baj bgj 
 class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 {
   public:
@@ -68,7 +68,7 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
         Eigen::Matrix<double, 15, 15> sqrt_info = Eigen::LLT<Eigen::Matrix<double, 15, 15>>(pre_integration->covariance.inverse()).matrixL().transpose();
         //sqrt_info.setIdentity();
         residual = sqrt_info * residual;//为了符合ceres的要求
-
+        //关于四个待优化参数的雅克比
         if (jacobians)
         {
             double sum_dt = pre_integration->sum_dt;
@@ -87,9 +87,9 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 ///                ROS_BREAK();
             }
 
-            if (jacobians[0])
+            if (jacobians[0])//误差关于i时刻的p和q的雅克比
             {
-                Eigen::Map<Eigen::Matrix<double, 15, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
+                Eigen::Map<Eigen::Matrix<double, 15, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);//为什么是15*7的矩阵
                 jacobian_pose_i.setZero();
 
                 jacobian_pose_i.block<3, 3>(O_P, O_P) = -Qi.inverse().toRotationMatrix();

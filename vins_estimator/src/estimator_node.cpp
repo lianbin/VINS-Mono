@@ -62,7 +62,7 @@ void predict(const sensor_msgs::ImuConstPtr &imu_msg)
     double ry = imu_msg->angular_velocity.y;
     double rz = imu_msg->angular_velocity.z;
     Eigen::Vector3d angular_velocity{rx, ry, rz};
-
+    //加打印看一下，最初的estimator.g为多少，应该是0
     Eigen::Vector3d un_acc_0 = tmp_Q * (acc_0 - tmp_Ba) - estimator.g;
 
     Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity) - tmp_Bg;
@@ -233,6 +233,7 @@ void process()
         for (auto &measurement : measurements)//
         {
             auto img_msg = measurement.second;
+			//首先处理imu数据
             double dx = 0, dy = 0, dz = 0, rx = 0, ry = 0, rz = 0;
             for (auto &imu_msg : measurement.first)//轮训图像帧对应的所有Imu数据
             {
@@ -303,7 +304,7 @@ void process()
             }
 
             ROS_DEBUG("processing vision data with stamp %f \n", img_msg->header.stamp.toSec());
-
+            //处理图像数据
             TicToc t_s;
             map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> image;
             for (unsigned int i = 0; i < img_msg->points.size(); i++)//获取图像帧的信息

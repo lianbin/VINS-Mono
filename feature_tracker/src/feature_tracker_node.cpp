@@ -35,6 +35,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         return;
     }
     // detect unstable camera stream
+    //前后两帧的时间差大于1秒，或者是当前帧的时间戳小于上一帧的时间戳
     if (img_msg->header.stamp.toSec() - last_image_time > 1.0 || img_msg->header.stamp.toSec() < last_image_time)
     {
         ROS_WARN("image discontinue! reset the feature tracker!");
@@ -43,7 +44,7 @@ void img_callback(const sensor_msgs::ImageConstPtr &img_msg)
         pub_count = 1;
         std_msgs::Bool restart_flag;
         restart_flag.data = true;
-        pub_restart.publish(restart_flag);
+        pub_restart.publish(restart_flag);//重新启动系统
         return;
     }
     last_image_time = img_msg->header.stamp.toSec();

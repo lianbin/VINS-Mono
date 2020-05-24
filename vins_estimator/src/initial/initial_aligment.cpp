@@ -1,7 +1,7 @@
 #include "initial_alignment.h"
 
 //崔华坤visualInitialAlign
-//应该也可以正式的进行最小二乘推导，留作以后推导
+//应该也可以正式的进行最小二乘推导
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
 {
     Matrix3d A;
@@ -58,6 +58,8 @@ MatrixXd TangentBasis(Vector3d &g0)
 
 void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x)
 {
+    //之前计算出的重力，只取方向，模长设置为1
+    //现在假设真的重力是三个方向的和。
     Vector3d g0 = g.normalized() * G.norm();
     Vector3d lx, ly;
     //VectorXd x;
@@ -71,7 +73,7 @@ void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vector
 
     map<double, ImageFrame>::iterator frame_i;
     map<double, ImageFrame>::iterator frame_j;
-    for(int k = 0; k < 4; k++)
+    for(int k = 0; k < 4; k++)//迭代四次
     {
         MatrixXd lxly(3, 2);
         lxly = TangentBasis(g0);
@@ -148,11 +150,11 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
         VectorXd tmp_b(6);
         tmp_b.setZero();
 
-        double dt = frame_j->second.pre_integration->sum_dt;
+        double dt = frame_j->second.pre_integration->sum_dt;//i->之间的dt
 
         tmp_A.block<3, 3>(0, 0) = -dt * Matrix3d::Identity();
         tmp_A.block<3, 3>(0, 6) = frame_i->second.R.transpose() * dt * dt / 2 * Matrix3d::Identity();
-        tmp_A.block<3, 1>(0, 9) = frame_i->second.R.transpose() * (frame_j->second.T - frame_i->second.T) / 100.0;     
+        tmp_A.block<3, 1>(0, 9) = frame_i->second.R.transpose() * (frame_j->second.T - frame_i->second.T) / 100.0; //这里除以100 相当于将s放大了100倍
         tmp_b.block<3, 1>(0, 0) = frame_j->second.pre_integration->delta_p + frame_i->second.R.transpose() * frame_j->second.R * TIC[0] - TIC[0];
         //cout << "delta_p   " << frame_j->second.pre_integration->delta_p.transpose() << endl;
         tmp_A.block<3, 3>(3, 0) = -Matrix3d::Identity();
@@ -183,13 +185,13 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
     x = A.ldlt().solve(b);
     double s = x(n_state - 1) / 100.0;
     ROS_DEBUG("estimated scale: %f", s);
-    g = x.segment<3>(n_state - 4);
+    g = x.segment<3>(n_state - 4);//获取g在c0下的表示
     ROS_DEBUG_STREAM(" result g     " << g.norm() << " " << g.transpose());
-    if(fabs(g.norm() - G.norm()) > 1.0 || s < 0)
+    if(fabs(g.norm() - G.norm()) > 1.0 || s < 0) //校验，重力的绝对值不能与实际重力的绝对值相差超过1，尺度不能为负值
     {
         return false;
     }
-
+    //进一步优化重力
     RefineGravity(all_image_frame, g, x);
     s = (x.tail<1>())(0) / 100.0;
     (x.tail<1>())(0) = s;
@@ -202,7 +204,7 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
 
 bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x)
 {
-    solveGyroscopeBias(all_image_frame, Bgs);//计算bg
+    solveGyroscopeBias(all_image_frame, Bgs);//计算陀螺的静态bg
 
     if(LinearAlignment(all_image_frame, g, x))
         return true;

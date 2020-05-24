@@ -46,7 +46,7 @@ class FeaturePerId
   public:
     const int feature_id; //feature的id号
     int start_frame;      //从哪一帧开始的。
-    //所有观测到
+    //所有观测到本feature的每一次feature信息
     vector<FeaturePerFrame> feature_per_frame;//第0元素应该就是第一次观测到本特征的信息
 
     int used_num;
@@ -91,7 +91,7 @@ class FeatureManager
     void removeBack();
     void removeFront(int frame_count);
     void removeOutlier();
-    list<FeaturePerId> feature;
+    list<FeaturePerId> feature;//特征点的列表
     int last_track_num;
 
   private:

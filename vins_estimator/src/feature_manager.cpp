@@ -73,12 +73,12 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vec
             last_track_num++;//相当于统计，跟踪成功的特征点个数
         }
     }
-
-    //当跟踪特征点已经比较少的时候，则marg老的帧，建立新的关键帧
+    //当目前的关键帧小于2个以及
+    //当跟踪成功的特征点已经比较少的时候，则marg老的帧，建立新的关键帧
     if (frame_count < 2 || last_track_num < 20)
         return true;
 
-    for (auto &it_per_id : feature)
+    for (auto &it_per_id : feature)//轮训所有的feature
     {
         //计算第2最新帧和第3最新帧之间跟踪到的特征点的平均视差
         if (it_per_id.start_frame <= frame_count - 2 &&
@@ -131,6 +131,7 @@ vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_coun
     vector<pair<Vector3d, Vector3d>> corres;
     for (auto &it : feature)
     {
+        //本特征点被连续观测到
         if (it.start_frame <= frame_count_l && it.endFrame() >= frame_count_r)
         {
             Vector3d a = Vector3d::Zero(), b = Vector3d::Zero();
@@ -198,6 +199,7 @@ VectorXd FeatureManager::getDepthVector()
     for (auto &it_per_id : feature)
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
+		//这里只是小于第三新的关键帧观测到的特征
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
             continue;
 #if 1
@@ -211,6 +213,10 @@ VectorXd FeatureManager::getDepthVector()
 }
 
 //见VINS-Mono中的补充推导
+//根据VIO的误差公式，我们想获取的是每个特征点在
+//第一次被观测到的相机坐标系下的坐标，所以每个特征点在计算其
+//深度的时候，都是将其第一次观测的坐标系设置为世界坐标系T=[I 0]。
+//求他的观测根据与第一次坐标系之间的关系，来进行相应的修正
 void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
 {
     for (auto &it_per_id : feature)
@@ -239,10 +245,10 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
         for (auto &it_per_frame : it_per_id.feature_per_frame)
         {
             imu_j++;
-            //第j个观测帧的位姿
+            //第j个观测帧的位姿          
             Eigen::Vector3d t1 = Ps[imu_j] + Rs[imu_j] * tic[0];
             Eigen::Matrix3d R1 = Rs[imu_j] * ric[0];
-			//得到R0j  ,t0j ，相当于计算出的空间点是在第一次被观测的帧中的相机系下的坐标点
+			//得到R0j  ,t0j / Tw1=[R1  t1] Tw2=[R2  t2] T12=Tw1^-1 * Tw2
             Eigen::Vector3d t = R0.transpose() * (t1 - t0);
             Eigen::Matrix3d R = R0.transpose() * R1;
             Eigen::Matrix<double, 3, 4> P;
@@ -330,6 +336,7 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
     }
 }
 
+//删除最老帧观测到的所有feature
 void FeatureManager::removeBack()
 {
     for (auto it = feature.begin(), it_next = feature.begin();
@@ -348,23 +355,25 @@ void FeatureManager::removeBack()
     }
 }
 
+//
 void FeatureManager::removeFront(int frame_count)
 {
     for (auto it = feature.begin(), it_next = feature.begin(); it != feature.end(); it = it_next)
     {
         it_next++;
 
-        if (it->start_frame == frame_count)
+        if (it->start_frame == frame_count)//被最新帧看到的特征点，编号减去1
         {
             it->start_frame--;
         }
-        else
+        else  //不是被最新帧看到的特征点
         {
-            int j = WINDOW_SIZE - 1 - it->start_frame;
-            if (it->endFrame() < frame_count - 1)
+            int j = WINDOW_SIZE - 1 - it->start_frame;//次新帧的索引
+            if (it->endFrame() < frame_count - 1)//不是被最新帧看到的点，并且最后endframe大于等于次新帧，则一定被次新帧看到
                 continue;
+			//删除掉被次新帧看到的记录
             it->feature_per_frame.erase(it->feature_per_frame.begin() + j);
-            if (it->feature_per_frame.size() == 0)
+            if (it->feature_per_frame.size() == 0)//如果仅仅被次新帧看到，那么直接删除该特征点
                 feature.erase(it);
         }
     }
