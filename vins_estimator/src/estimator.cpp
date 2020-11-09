@@ -142,6 +142,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     all_image_frame.insert(make_pair(header.stamp.toSec(), imageframe));
     tmp_pre_integration = new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
 
+    //最小二乘估计外参数中的旋转
     if(ESTIMATE_EXTRINSIC == 2)
     {
         ROS_INFO("calibrating extrinsic param, rotation movement is needed");
@@ -228,10 +229,11 @@ bool Estimator::initialStructure()
     {
         map<double, ImageFrame>::iterator frame_it;
         Vector3d sum_g;
+		
+		//每个预积分区间的平均加速度
         for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end(); frame_it++)
         {
             double dt = frame_it->second.pre_integration->sum_dt;
-			//每个预积分区间的平均加速度
             Vector3d tmp_g = frame_it->second.pre_integration->delta_v / dt;
             sum_g += tmp_g;
         }
@@ -261,7 +263,8 @@ bool Estimator::initialStructure()
     Vector3d T[frame_count + 1];
     map<int, Vector3d> sfm_tracked_points;
     vector<SFMFeature> sfm_f;
-    for (auto &it_per_id : f_manager.feature)//所有的特征点
+	//搜集所有的特征点信息
+    for (auto &it_per_id : f_manager.feature)
     {
         int imu_j = it_per_id.start_frame - 1;
         SFMFeature tmp_feature;
@@ -434,7 +437,7 @@ bool Estimator::visualInitialAlign()
     {
         pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
     }
-	//根据尺度初始化所有的平移
+	//根据尺度初始化所有的平移，并且平移都是相对于c0坐标系的
     for (int i = frame_count; i >= 0; i--)
         Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
     int kv = -1;
@@ -442,6 +445,8 @@ bool Estimator::visualInitialAlign()
     map<double, ImageFrame>::iterator frame_i;
     for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
     {
+        //！！！！bug，这里的kv++，应该是在if外面的。因为计算的是all_image_frame的速度。
+        //所以应该在if外侧对其进行++的操作
         if(frame_i->second.is_key_frame)
         {
             kv++;

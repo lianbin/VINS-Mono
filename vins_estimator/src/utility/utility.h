@@ -21,6 +21,7 @@ class Utility
         Eigen::Quaternion<Scalar_t> dq;
         Eigen::Matrix<Scalar_t, 3, 1> half_theta = theta;
         half_theta /= static_cast<Scalar_t>(2.0);
+		//当theta是小量的时候，近似为q=[1 1/2θ]
         dq.w() = static_cast<Scalar_t>(1.0);
         dq.x() = half_theta.x();
         dq.y() = half_theta.y();

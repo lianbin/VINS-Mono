@@ -168,7 +168,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
     //三角化 0 2...l-1 ->l
 	//1: trangulate between l l+1 l+2 ->frame_num - 1
 	//2: solve pnp l + 1; trangulate l + 1 ------- frame_num - 1; 
-	for (int i = l; i < frame_num - 1 ; i++)
+	for (int i = l; i < frame_num - 1 ; i++)//三角化l l+1 ....次新帧 ->最新帧
 	{
 		// solve pnp
 		//计算帧号大于l的每一帧的位姿

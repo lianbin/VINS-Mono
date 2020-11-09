@@ -64,7 +64,7 @@ void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vector
     Vector3d lx, ly;
     //VectorXd x;
     int all_frame_count = all_image_frame.size();
-    int n_state = all_frame_count * 3 + 2 + 1;
+    int n_state = all_frame_count * 3 + 2 + 1; //速度*3 + 重力*2+尺度*1
 
     MatrixXd A{n_state, n_state};
     A.setZero();

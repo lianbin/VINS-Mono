@@ -8,9 +8,11 @@ InitialEXRotation::InitialEXRotation(){
     ric = Matrix3d::Identity();
 }
 
+//外参数标定
 bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> corres, Quaterniond delta_q_imu, Matrix3d &calib_ric_result)
 {
     frame_count++;
+	//获取上一帧于最新帧之间的旋转Rc1c2  ，c2是最新 c1是次新
     Rc.push_back(solveRelativeR(corres));
     Rimu.push_back(delta_q_imu.toRotationMatrix());
     Rc_g.push_back(ric.inverse() * delta_q_imu * ric);
@@ -66,6 +68,7 @@ bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> c
         return false;
 }
 
+
 Matrix3d InitialEXRotation::solveRelativeR(const vector<pair<Vector3d, Vector3d>> &corres)
 {
     if (corres.size() >= 9)
@@ -90,6 +93,7 @@ Matrix3d InitialEXRotation::solveRelativeR(const vector<pair<Vector3d, Vector3d>
         cv::Mat_<double> ans_R_cv = ratio1 > ratio2 ? R1 : R2;
 
         Matrix3d ans_R_eigen;
+		//ans_R_eigen中存储的是ans_R_cv的转置
         for (int i = 0; i < 3; i++)
             for (int j = 0; j < 3; j++)
                 ans_R_eigen(j, i) = ans_R_cv(i, j);
@@ -106,6 +110,7 @@ double InitialEXRotation::testTriangulation(const vector<cv::Point2f> &l,
     cv::Matx34f P = cv::Matx34f(1, 0, 0, 0,
                                 0, 1, 0, 0,
                                 0, 0, 1, 0);
+	//投影矩阵
     cv::Matx34f P1 = cv::Matx34f(R(0, 0), R(0, 1), R(0, 2), t(0),
                                  R(1, 0), R(1, 1), R(1, 2), t(1),
                                  R(2, 0), R(2, 1), R(2, 2), t(2));
@@ -113,8 +118,10 @@ double InitialEXRotation::testTriangulation(const vector<cv::Point2f> &l,
     int front_count = 0;
     for (int i = 0; i < pointcloud.cols; i++)
     {
+        //pointcloud的每一行都是一个三角话出来的空间点
         double normal_factor = pointcloud.col(i).at<float>(3);
 
+        //三角化出来的空间点分别投影到两个相机
         cv::Mat_<double> p_3d_l = cv::Mat(P) * (pointcloud.col(i) / normal_factor);
         cv::Mat_<double> p_3d_r = cv::Mat(P1) * (pointcloud.col(i) / normal_factor);
         if (p_3d_l(2) > 0 && p_3d_r(2) > 0)
@@ -124,6 +131,8 @@ double InitialEXRotation::testTriangulation(const vector<cv::Point2f> &l,
     return 1.0 * front_count / pointcloud.cols;
 }
 
+
+//通过本质矩阵恢复R t
 void InitialEXRotation::decomposeE(cv::Mat E,
                                  cv::Mat_<double> &R1, cv::Mat_<double> &R2,
                                  cv::Mat_<double> &t1, cv::Mat_<double> &t2)
