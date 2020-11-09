@@ -110,6 +110,7 @@ void image_callback(const sensor_msgs::ImageConstPtr &image_msg)
     }
     last_image_time = image_msg->header.stamp.toSec();
 }
+//里程计发布的第三最新帧看到的point
 
 void point_callback(const sensor_msgs::PointCloudConstPtr &point_msg)
 {
@@ -130,7 +131,7 @@ void point_callback(const sensor_msgs::PointCloudConstPtr &point_msg)
     }
     */
 }
-
+//里程计发布的第三最新帧的位姿
 void pose_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 {
     //ROS_INFO("pose_callback!");
@@ -179,6 +180,8 @@ void imu_forward_callback(const nav_msgs::Odometry::ConstPtr &forward_msg)
         cameraposevisual.publish_by(pub_camera_pose_visual, forward_msg->header);
     }
 }
+
+
 void relo_relative_pose_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 {
     Vector3d relative_t = Vector3d(pose_msg->pose.pose.position.x,
@@ -200,6 +203,7 @@ void relo_relative_pose_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 
 }
 
+//每次里程计优化过后，发布的里程计信息，包括p v q 
 void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 {
     //ROS_INFO("vio_callback!");
@@ -228,6 +232,7 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
         cameraposevisual.publish_by(pub_camera_pose_visual, pose_msg->header);
     }
 
+    //存储里程计发布的数据信息
     odometry_buf.push(vio_t_cam);
     if (odometry_buf.size() > 10)
     {
@@ -263,6 +268,7 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
         key_odometrys.points.push_back(pose_marker);
         odometry_buf.push(vio_t);
     }
+	//发布一个短时的里程计数据信息
     pub_key_odometrys.publish(key_odometrys);
 
     if (!LOOP_CLOSURE)
@@ -317,6 +323,7 @@ void process()
                 point_buf.pop();
                 printf("throw point at beginning\n");
             }
+			//得到同一时刻的图像 pose  与 point
             else if (image_buf.back()->header.stamp.toSec() >= pose_buf.front()->header.stamp.toSec() 
                 && point_buf.back()->header.stamp.toSec() >= pose_buf.front()->header.stamp.toSec())
             {
@@ -393,12 +400,14 @@ void process()
 
                 for (unsigned int i = 0; i < point_msg->points.size(); i++)
                 {
+                    //在第三最新帧看到的时候，对应的世界坐标系的点
                     cv::Point3f p_3d;
                     p_3d.x = point_msg->points[i].x;
                     p_3d.y = point_msg->points[i].y;
                     p_3d.z = point_msg->points[i].z;
                     point_3d.push_back(p_3d);
 
+					//在第一观测帧上的2d信息
                     cv::Point2f p_2d_uv, p_2d_normal;
                     double p_id;
                     p_2d_normal.x = point_msg->channels[i].values[0];

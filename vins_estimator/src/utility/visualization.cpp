@@ -375,11 +375,14 @@ void pubKeyframe(const Estimator &estimator)
         for (auto &it_per_id : estimator.f_manager.feature)
         {
             int frame_size = it_per_id.feature_per_frame.size();
+			//本特征点，能被第三最新帧看到，并且不止是被第三最新帧看到
             if(it_per_id.start_frame < WINDOW_SIZE - 2 && it_per_id.start_frame + frame_size - 1 >= WINDOW_SIZE - 2 && it_per_id.solve_flag == 1)
             {
 
                 int imu_i = it_per_id.start_frame;
+				//在观测帧中的相机坐标系下的坐标
                 Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
+				//相机坐标->IMU坐标->世界坐标
                 Vector3d w_pts_i = estimator.Rs[imu_i] * (estimator.ric[0] * pts_i + estimator.tic[0])
                                       + estimator.Ps[imu_i];
                 geometry_msgs::Point32 p;
@@ -387,7 +390,8 @@ void pubKeyframe(const Estimator &estimator)
                 p.y = w_pts_i(1);
                 p.z = w_pts_i(2);
                 point_cloud.points.push_back(p);
-
+				
+                //在第三最新帧上的2d信息
                 int imu_j = WINDOW_SIZE - 2 - it_per_id.start_frame;
                 sensor_msgs::ChannelFloat32 p_2d;
                 p_2d.values.push_back(it_per_id.feature_per_frame[imu_j].point.x());
@@ -402,6 +406,7 @@ void pubKeyframe(const Estimator &estimator)
         pub_keyframe_point.publish(point_cloud);
     }
 }
+
 
 void pubRelocalization(const Estimator &estimator)
 {
