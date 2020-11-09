@@ -1218,12 +1218,13 @@ void Estimator::setReloFrame(double _frame_stamp, int _frame_index, vector<Vecto
     prev_relo_r = _relo_r;
     for(int i = 0; i < WINDOW_SIZE; i++)
     {
+        //找到对应的帧
         if(relo_frame_stamp == Headers[i].stamp.toSec())
         {
             relo_frame_local_index = i;
             relocalization_info = 1;
             for (int j = 0; j < SIZE_POSE; j++)
-                relo_Pose[j] = para_Pose[i][j];
+                relo_Pose[j] = para_Pose[i][j];//记录当前relo帧的状态
         }
     }
 }

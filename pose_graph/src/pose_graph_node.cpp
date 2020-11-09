@@ -150,6 +150,7 @@ void pose_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
     */
 }
 
+//里程计发布的位姿
 void imu_forward_callback(const nav_msgs::Odometry::ConstPtr &forward_msg)
 {
     if (VISUALIZE_IMU_FORWARD)
@@ -169,6 +170,7 @@ void imu_forward_callback(const nav_msgs::Odometry::ConstPtr &forward_msg)
 
         Vector3d vio_t_cam;
         Quaterniond vio_q_cam;
+		//原来是IMU的姿态，转换为相机的姿态
         vio_t_cam = vio_t + vio_q * tic;
         vio_q_cam = vio_q * qic;        
 
@@ -450,6 +452,7 @@ void command()
         std::this_thread::sleep_for(dura);
     }
 }
+
 
 int main(int argc, char **argv)
 {
