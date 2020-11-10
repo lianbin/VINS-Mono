@@ -72,6 +72,7 @@ KeyFrame::KeyFrame(double _time_stamp, int _index, Vector3d &_vio_T_w_i, Matrix3
 }
 
 
+//每个特征点计算一个描述子
 void KeyFrame::computeWindowBRIEFPoint()
 {
 	BriefExtractor extractor(BRIEF_PATTERN_FILE.c_str());
@@ -104,6 +105,7 @@ void KeyFrame::computeBRIEFPoint()
 	extractor(image, keypoints, brief_descriptors);
 	for (int i = 0; i < (int)keypoints.size(); i++)
 	{
+	    //获取fast特征点在去畸变之后的归一化坐标
 		Eigen::Vector3d tmp_p;
 		m_camera->liftProjective(Eigen::Vector2d(keypoints[i].pt.x, keypoints[i].pt.y), tmp_p);
 		cv::KeyPoint tmp_norm;
@@ -130,7 +132,7 @@ bool KeyFrame::searchInAera(const BRIEF::bitset window_descriptor,
     int bestIndex = -1;
     for(int i = 0; i < (int)descriptors_old.size(); i++)
     {
-
+ 
         int dis = HammingDis(window_descriptor, descriptors_old[i]);
         if(dis < bestDist)
         {
@@ -139,7 +141,7 @@ bool KeyFrame::searchInAera(const BRIEF::bitset window_descriptor,
         }
     }
     //printf("best dist %d", bestDist);
-    if (bestIndex != -1 && bestDist < 80)
+    if (bestIndex != -1 && bestDist < 80)//小于80的时候才认为匹配上
     {
       best_match = keypoints_old[bestIndex].pt;
       best_match_norm = keypoints_old_norm[bestIndex].pt;
@@ -148,6 +150,7 @@ bool KeyFrame::searchInAera(const BRIEF::bitset window_descriptor,
     else
       return false;
 }
+
 
 void KeyFrame::searchByBRIEFDes(std::vector<cv::Point2f> &matched_2d_old,
 								std::vector<cv::Point2f> &matched_2d_old_norm,
@@ -197,6 +200,7 @@ void KeyFrame::FundmantalMatrixRANSAC(const std::vector<cv::Point2f> &matched_2d
     }
 }
 
+
 void KeyFrame::PnPRANSAC(const vector<cv::Point2f> &matched_2d_old_norm,
                          const std::vector<cv::Point3f> &matched_3d,
                          std::vector<uchar> &status,
@@ -211,17 +215,17 @@ void KeyFrame::PnPRANSAC(const vector<cv::Point2f> &matched_2d_old_norm,
     Vector3d P_inital;
     Matrix3d R_w_c = origin_vio_R * qic;
     Vector3d T_w_c = origin_vio_T + origin_vio_R * tic;
-
+    //得到Tcw
     R_inital = R_w_c.inverse();
     P_inital = -(R_inital * T_w_c);
-
+    //求的是old帧的位姿，在求的时候，是以当前帧的位姿为初值的
     cv::eigen2cv(R_inital, tmp_r);
     cv::Rodrigues(tmp_r, rvec);
     cv::eigen2cv(P_inital, t);
 
     cv::Mat inliers;
     TicToc t_pnp_ransac;
-
+     
     if (CV_MAJOR_VERSION < 3)
         solvePnPRansac(matched_3d, matched_2d_old_norm, K, D, rvec, t, true, 100, 10.0 / 460.0, 100, inliers);
     else
@@ -298,6 +302,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    }
 	#endif
 	//printf("search by des\n");
+	//匹配的时候，用的是harris特征点的描述子
 	searchByBRIEFDes(matched_2d_old, matched_2d_old_norm, status, old_kf->brief_descriptors, old_kf->keypoints, old_kf->keypoints_norm);
 	reduceVector(matched_2d_cur, status);
 	reduceVector(matched_2d_old, status);
@@ -403,7 +408,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	Eigen::Vector3d relative_t;
 	Quaterniond relative_q;
 	double relative_yaw;
-	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)
+	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)//需要最少达到25个匹配
 	{
 		status.clear();
 	    PnPRANSAC(matched_2d_old_norm, matched_3d, status, PnP_T_old, PnP_R_old);
@@ -471,13 +476,14 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 
 	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)
 	{
+	    //得到Told_cur
 	    relative_t = PnP_R_old.transpose() * (origin_vio_T - PnP_T_old);
 	    relative_q = PnP_R_old.transpose() * origin_vio_R;
 	    relative_yaw = Utility::normalizeAngle(Utility::R2ypr(origin_vio_R).x() - Utility::R2ypr(PnP_R_old).x());
 	    //printf("PNP relative\n");
 	    //cout << "pnp relative_t " << relative_t.transpose() << endl;
 	    //cout << "pnp relative_yaw " << relative_yaw << endl;
-	    if (abs(relative_yaw) < 30.0 && relative_t.norm() < 20.0)
+	    if (abs(relative_yaw) < 30.0 && relative_t.norm() < 20.0)//如果水平视角变化超过30.0 或者 相对距离超过了20m,则不能作为回环来处理
 	    {
 
 	    	has_loop = true;

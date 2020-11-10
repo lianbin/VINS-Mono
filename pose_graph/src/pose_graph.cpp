@@ -39,11 +39,13 @@ void PoseGraph::loadVocabulary(std::string voc_path)
     db.setVocabulary(*voc, false, 0);
 }
 
+
 void PoseGraph::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
 {
     //shift to base frame
     Vector3d vio_P_cur;
     Matrix3d vio_R_cur;
+	//一个新的地图块，重新开始
     if (sequence_cnt != cur_kf->sequence)
     {
         sequence_cnt++;
@@ -72,10 +74,10 @@ void PoseGraph::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
     {
         addKeyFrameIntoVoc(cur_kf);
     }
-	if (loop_index != -1)
+	if (loop_index != -1)//检测到回环
 	{
         //printf(" %d detect loop with %d \n", cur_kf->index, loop_index);
-        KeyFrame* old_kf = getKeyFrame(loop_index);
+        KeyFrame* old_kf = getKeyFrame(loop_index);//找到回环帧
 
         if (cur_kf->findConnection(old_kf))
         {
@@ -301,6 +303,8 @@ KeyFrame* PoseGraph::getKeyFrame(int index)
         return NULL;
 }
 
+
+//回环检测的时候，用的是fast特征点的描述子
 int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
 {
     // put image into image_pool; for visualization
@@ -316,10 +320,12 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
     //first query; then add this frame into database!
     QueryResults ret;
     TicToc t_query;
+	//不查找50个以内的关键帧
     db.query(keyframe->brief_descriptors, ret, 4, frame_index - 50);
     //printf("query time: %f", t_query.toc());
     //cout << "Searching for Image " << frame_index << ". " << ret << endl;
 
+	//将当前帧的描述子添加到database
     TicToc t_add;
     db.add(keyframe->brief_descriptors);
     //printf("add feature time: %f", t_add.toc());
@@ -345,7 +351,7 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
         }
     }
     // a good match with its nerghbour
-    if (ret.size() >= 1 &&ret[0].Score > 0.05)
+    if (ret.size() >= 1 && ret[0].Score > 0.05)
         for (unsigned int i = 1; i < ret.size(); i++)
         {
             //if (ret[i].Score > ret[0].Score * 0.3)
@@ -376,7 +382,7 @@ int PoseGraph::detectLoop(KeyFrame* keyframe, int frame_index)
         for (unsigned int i = 0; i < ret.size(); i++)
         {
             if (min_index == -1 || (ret[i].Id < min_index && ret[i].Score > 0.015))
-                min_index = ret[i].Id;
+                min_index = ret[i].Id; //在所有行成回环的帧当中，找到距离当前帧时间最久的那个作为回环帧
         }
         return min_index;
     }
