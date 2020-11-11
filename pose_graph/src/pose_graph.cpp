@@ -86,22 +86,29 @@ void PoseGraph::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
 
             Vector3d w_P_old, w_P_cur, vio_P_cur;
             Matrix3d w_R_old, w_R_cur, vio_R_cur;
+			//分别获取到两帧的位姿
             old_kf->getVioPose(w_P_old, w_R_old);
             cur_kf->getVioPose(vio_P_cur, vio_R_cur);
 
             Vector3d relative_t;
             Quaterniond relative_q;
+			//
             relative_t = cur_kf->getLoopRelativeT();
             relative_q = (cur_kf->getLoopRelativeQ()).toRotationMatrix();
+
+			//根据回环计算回环帧的位姿->与最新帧的位姿计算出相对位姿
+			//回环帧的vio的结果乘上相对位姿->当前帧的位姿
             w_P_cur = w_R_old * relative_t + w_P_old;
             w_R_cur = w_R_old * relative_q;
             double shift_yaw;
             Matrix3d shift_r;
-            Vector3d shift_t; 
+            Vector3d shift_t;
+			//yaw角以及平移的偏差
             shift_yaw = Utility::R2ypr(w_R_cur).x() - Utility::R2ypr(vio_R_cur).x();
             shift_r = Utility::ypr2R(Vector3d(shift_yaw, 0, 0));
             shift_t = w_P_cur - w_R_cur * vio_R_cur.transpose() * vio_P_cur; 
-            // shift vio pose of whole sequence to the world frame
+
+			// shift vio pose of whole sequence to the world frame
             if (old_kf->sequence != cur_kf->sequence && sequence_loop[cur_kf->sequence] == 0)
             {  
                 w_r_vio = shift_r;
@@ -427,6 +434,7 @@ void PoseGraph::optimize4DoF()
             m_keyframelist.lock();
             KeyFrame* cur_kf = getKeyFrame(cur_index);
 
+			//从当前帧到最开始的那一帧，一共是cur_index + 1帧
             int max_length = cur_index + 1;
 
             // w^t_i   w^q_i
@@ -445,7 +453,7 @@ void PoseGraph::optimize4DoF()
             ceres::LossFunction *loss_function;
             loss_function = new ceres::HuberLoss(0.1);
             //loss_function = new ceres::CauchyLoss(1.0);
-            ceres::LocalParameterization* angle_local_parameterization =
+            ceres::LocalPaurameterization* angle_local_parameterization =
                 AngleLocalParameterization::Create();
 
             list<KeyFrame*>::iterator it;
@@ -453,6 +461,7 @@ void PoseGraph::optimize4DoF()
             int i = 0;
             for (it = keyframelist.begin(); it != keyframelist.end(); it++)
             {
+                //回环帧之前的帧不进行优化
                 if ((*it)->index < first_looped_index)
                     continue;
                 (*it)->local_index = i;
@@ -466,28 +475,37 @@ void PoseGraph::optimize4DoF()
                 t_array[i][2] = tmp_t(2);
                 q_array[i] = tmp_q;
 
+                
                 Vector3d euler_angle = Utility::R2ypr(tmp_q.toRotationMatrix());
                 euler_array[i][0] = euler_angle.x();
                 euler_array[i][1] = euler_angle.y();
                 euler_array[i][2] = euler_angle.z();
-
+   
                 sequence_array[i] = (*it)->sequence;
-
+                //添加的就是需要进行优化的
+				
+                //添加euler参数块的时候，指定了长度为1。也就是指添加了euler_array[i]的第一个元素yaw
                 problem.AddParameterBlock(euler_array[i], 1, angle_local_parameterization);
+				//添加三个平移的自由度参数
                 problem.AddParameterBlock(t_array[i], 3);
 
+				//回环的时候，固定回环帧
                 if ((*it)->index == first_looped_index || (*it)->sequence == 0)
                 {   
                     problem.SetParameterBlockConstant(euler_array[i]);
                     problem.SetParameterBlockConstant(t_array[i]);
                 }
 
-                //add edge
+                //add edge 添加序列边
                 for (int j = 1; j < 5; j++)
                 {
+                  //条件1：每帧别与其之前的4个帧
+                  //条件2：不能跨序列
                   if (i - j >= 0 && sequence_array[i] == sequence_array[i-j])
                   {
+                     
                     Vector3d euler_conncected = Utility::R2ypr(q_array[i-j].toRotationMatrix());
+					//与序列帧的相对差，差的结果依然是在世界坐标系中进行标示
                     Vector3d relative_t(t_array[i][0] - t_array[i-j][0], t_array[i][1] - t_array[i-j][1], t_array[i][2] - t_array[i-j][2]);
                     relative_t = q_array[i-j].inverse() * relative_t;
                     double relative_yaw = euler_array[i][0] - euler_array[i-j][0];
@@ -500,8 +518,8 @@ void PoseGraph::optimize4DoF()
                   }
                 }
 
-                //add loop edge
-                
+                //add loop edge 添加回环边
+   
                 if((*it)->has_loop)
                 {
                     assert((*it)->loop_index >= first_looped_index);

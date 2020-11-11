@@ -219,6 +219,8 @@ void KeyFrame::PnPRANSAC(const vector<cv::Point2f> &matched_2d_old_norm,
     R_inital = R_w_c.inverse();
     P_inital = -(R_inital * T_w_c);
     //求的是old帧的位姿，在求的时候，是以当前帧的位姿为初值的
+    //既然old帧有位姿，为什么不以old帧自己的位姿作为初值呢？？
+    
     cv::eigen2cv(R_inital, tmp_r);
     cv::Rodrigues(tmp_r, rvec);
     cv::eigen2cv(P_inital, t);
@@ -476,14 +478,16 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 
 	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)
 	{
-	    //得到Told_cur
+	    //得到相对位姿Told_cur
 	    relative_t = PnP_R_old.transpose() * (origin_vio_T - PnP_T_old);
 	    relative_q = PnP_R_old.transpose() * origin_vio_R;
 	    relative_yaw = Utility::normalizeAngle(Utility::R2ypr(origin_vio_R).x() - Utility::R2ypr(PnP_R_old).x());
 	    //printf("PNP relative\n");
 	    //cout << "pnp relative_t " << relative_t.transpose() << endl;
 	    //cout << "pnp relative_yaw " << relative_yaw << endl;
-	    if (abs(relative_yaw) < 30.0 && relative_t.norm() < 20.0)//如果水平视角变化超过30.0 或者 相对距离超过了20m,则不能作为回环来处理
+	    //如果水平视角变化超过30.0 或者 相对距离超过了20m,则不能作为回环来处理
+	    //每个帧的姿态都是已知的，为什么不直接用来做判断？？？
+	    if (abs(relative_yaw) < 30.0 && relative_t.norm() < 20.0)
 	    {
 
 	    	has_loop = true;
@@ -503,6 +507,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 		            p.z = matched_id[i];
 		            msg_match_points.points.push_back(p);
 			    }
+				//
 			    Eigen::Vector3d T = old_kf->T_w_i; 
 			    Eigen::Matrix3d R = old_kf->R_w_i;
 			    Quaterniond Q(R);
