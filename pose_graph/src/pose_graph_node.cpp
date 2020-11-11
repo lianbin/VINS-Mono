@@ -400,7 +400,7 @@ void process()
 
                 for (unsigned int i = 0; i < point_msg->points.size(); i++)
                 {
-                    //在第三最新帧看到的时候，对应的世界坐标系的点
+                    //世界坐标系的点
                     cv::Point3f p_3d;
                     p_3d.x = point_msg->points[i].x;
                     p_3d.y = point_msg->points[i].y;
