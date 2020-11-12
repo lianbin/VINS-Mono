@@ -538,6 +538,8 @@ int main(int argc, char **argv)
 
     fsSettings.release();
 
+    //note:在代码注释中，凡是回环帧，都代表与当前帧产生回环的那个历史帧。
+    //产生回环帧，表示主动的那个帧
     ros::Subscriber sub_imu_forward = n.subscribe("/vins_estimator/imu_propagate", 2000, imu_forward_callback);
     ros::Subscriber sub_vio = n.subscribe("/vins_estimator/odometry", 2000, vio_callback);
     ros::Subscriber sub_image = n.subscribe(IMAGE_TOPIC, 2000, image_callback);

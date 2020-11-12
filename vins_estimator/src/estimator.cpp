@@ -840,28 +840,36 @@ void Estimator::optimization()
     {
         //printf("set relocalization factor! \n");
         ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+		//添加relo_Pose的参数块,在这之前,滑动窗口内所有帧的位姿,以及特征点,都已经添加过了。
         problem.AddParameterBlock(relo_Pose, SIZE_POSE, local_parameterization);
         int retrive_feature_index = 0;
         int feature_index = -1;
-        for (auto &it_per_id : f_manager.feature)
+        for (auto &it_per_id : f_manager.feature)//循环所有的feature
         {
             it_per_id.used_num = it_per_id.feature_per_frame.size();
+			//条件1 该feature必须被大于两个的帧看到
+			//条件2 因为vio发布点云的时候，发布的是第三最新帧，在要求不少于两个看到的情况狂下，起始帧一定是早于第三最新帧的
             if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
                 continue;
             ++feature_index;
+			//注意这里的start并不是固定的，也就是重定位的误差函数，并不是只是在回环帧与回环产生帧时间进行重投影误差。
+			//二是根据特征点被窗口内第一次看到的帧所决定。非常重要的一点
             int start = it_per_id.start_frame;
-            if(start <= relo_frame_local_index)
+			
+            if(start <= relo_frame_local_index)//产生回环的帧，目前在窗口内的索引
             {   
                 while((int)match_points[retrive_feature_index].z() < it_per_id.feature_id)
                 {
                     retrive_feature_index++;
                 }
+				//找到匹配的id号
                 if((int)match_points[retrive_feature_index].z() == it_per_id.feature_id)
                 {
                     Vector3d pts_j = Vector3d(match_points[retrive_feature_index].x(), match_points[retrive_feature_index].y(), 1.0);
                     Vector3d pts_i = it_per_id.feature_per_frame[0].point;
                     
                     ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
+					//构建重投影误差，
                     problem.AddResidualBlock(f, loss_function, para_Pose[start], relo_Pose, para_Ex_Pose[0], para_Feature[feature_index]);
                     retrive_feature_index++;
                 }     
@@ -1218,11 +1226,13 @@ void Estimator::setReloFrame(double _frame_stamp, int _frame_index, vector<Vecto
     prev_relo_r = _relo_r;
     for(int i = 0; i < WINDOW_SIZE; i++)
     {
-        //找到对应的帧
-        if(relo_frame_stamp == Headers[i].stamp.toSec())
+        //找到对应的帧，这里的设计在于，如果pose_graph运行时间较慢
+        //vio发布的是第三最新帧，程序走到这里的时候，很有可能第三最新帧已经
+        //被滑出了窗口，那么再优化就是无意义的了。
+        if(relo_frame_stamp == Headers[i].stamp.toSec())//找到滑动窗口中的帧
         {
             relo_frame_local_index = i;
-            relocalization_info = 1;
+            relocalization_info = 1;//设置重定位标志
             for (int j = 0; j < SIZE_POSE; j++)
                 relo_Pose[j] = para_Pose[i][j];//记录当前relo帧的状态
         }
