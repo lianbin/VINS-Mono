@@ -82,7 +82,7 @@ void PoseGraph::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
         if (cur_kf->findConnection(old_kf))
         {
             if (earliest_loop_index > loop_index || earliest_loop_index == -1)
-                earliest_loop_index = loop_index;
+                earliest_loop_index = loop_index;//时间最久的那个回环帧的索引
 
             Vector3d w_P_old, w_P_cur, vio_P_cur;
             Matrix3d w_R_old, w_R_cur, vio_R_cur;
@@ -413,6 +413,9 @@ void PoseGraph::addKeyFrameIntoVoc(KeyFrame* keyframe)
     db.add(keyframe->brief_descriptors);
 }
 
+
+//需要思考一个问题，似乎每次检测到回环之后
+//都要优化包括之前检测过的所有回环，这么做的好处在那里呢？
 void PoseGraph::optimize4DoF()
 {
     while(true)
@@ -507,7 +510,8 @@ void PoseGraph::optimize4DoF()
                     Vector3d euler_conncected = Utility::R2ypr(q_array[i-j].toRotationMatrix());
 					//与序列帧的相对差，差的结果依然是在世界坐标系中进行标示
                     Vector3d relative_t(t_array[i][0] - t_array[i-j][0], t_array[i][1] - t_array[i-j][1], t_array[i][2] - t_array[i-j][2]);
-                    relative_t = q_array[i-j].inverse() * relative_t;
+                    //相对差转换到i坐标系下
+					relative_t = q_array[i-j].inverse() * relative_t;
                     double relative_yaw = euler_array[i][0] - euler_array[i-j][0];
                     ceres::CostFunction* cost_function = FourDOFError::Create( relative_t.x(), relative_t.y(), relative_t.z(),
                                                    relative_yaw, euler_conncected.y(), euler_conncected.z());
@@ -518,14 +522,16 @@ void PoseGraph::optimize4DoF()
                   }
                 }
 
-                //add loop edge 添加回环边
+                //add loop edge 添加回环边，优化的都是跟回环相关的帧
    
-                if((*it)->has_loop)
+                if((*it)->has_loop)//产生回环的关键帧
                 {
                     assert((*it)->loop_index >= first_looped_index);
+					//找到回环帧的索引号
                     int connected_index = getKeyFrame((*it)->loop_index)->local_index;
                     Vector3d euler_conncected = Utility::R2ypr(q_array[connected_index].toRotationMatrix());
                     Vector3d relative_t;
+					//Told_cur
                     relative_t = (*it)->getLoopRelativeT();
                     double relative_yaw = (*it)->getLoopRelativeYaw();
                     ceres::CostFunction* cost_function = FourDOFWeightError::Create( relative_t.x(), relative_t.y(), relative_t.z(),
@@ -542,7 +548,7 @@ void PoseGraph::optimize4DoF()
                 i++;
             }
             m_keyframelist.unlock();
-
+            //进行优化
             ceres::Solve(options, &problem, &summary);
             //std::cout << summary.BriefReport() << "\n";
             
@@ -553,6 +559,8 @@ void PoseGraph::optimize4DoF()
                 printf("optimize i: %d p: %f, %f, %f\n", j, t_array[j][0], t_array[j][1], t_array[j][2] );
             }
             */
+
+			//优化完成之后更新位姿
             m_keyframelist.lock();
             i = 0;
             for (it = keyframelist.begin(); it != keyframelist.end(); it++)
@@ -575,6 +583,7 @@ void PoseGraph::optimize4DoF()
             cur_kf->getPose(cur_t, cur_r);
             cur_kf->getVioPose(vio_t, vio_r);
             m_drift.lock();
+			
             yaw_drift = Utility::R2ypr(cur_r).x() - Utility::R2ypr(vio_r).x();
             r_drift = Utility::ypr2R(Vector3d(yaw_drift, 0, 0));
             t_drift = cur_t - r_drift * vio_t;
@@ -909,6 +918,7 @@ void PoseGraph::publish()
     pub_base_path.publish(base_path);
     //posegraph_visualization->publish_by(pub_pose_graph, path[sequence_cnt].header);
 }
+
 
 void PoseGraph::updateKeyFrameLoop(int index, Eigen::Matrix<double, 8, 1 > &_loop_info)
 {
