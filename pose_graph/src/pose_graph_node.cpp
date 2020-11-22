@@ -182,6 +182,8 @@ void imu_forward_callback(const nav_msgs::Odometry::ConstPtr &forward_msg)
 }
 
 
+
+
 void relo_relative_pose_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 {
     Vector3d relative_t = Vector3d(pose_msg->pose.pose.position.x,
@@ -203,6 +205,7 @@ void relo_relative_pose_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 
 }
 
+
 //每次里程计优化过后，发布的里程计信息，包括p v q 
 void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 {
@@ -223,11 +226,11 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
     Vector3d vio_t_cam;
     Quaterniond vio_q_cam;
     vio_t_cam = vio_t + vio_q * tic;
-    vio_q_cam = vio_q * qic;        
+    vio_q_cam = vio_q * qic;
 
     if (!VISUALIZE_IMU_FORWARD)
     {
-        cameraposevisual.reset();
+        cameraposevisual.reset();//只是实时的显示摄像头的位姿图标，所以每次都把之前的数据清零
         cameraposevisual.add_pose(vio_t_cam, vio_q_cam);
         cameraposevisual.publish_by(pub_camera_pose_visual, pose_msg->header);
     }
@@ -271,7 +274,7 @@ void vio_callback(const nav_msgs::Odometry::ConstPtr &pose_msg)
 	//发布一个短时的里程计数据信息
     pub_key_odometrys.publish(key_odometrys);
 
-    if (!LOOP_CLOSURE)
+    if (!LOOP_CLOSURE)//如果不进行回环检测
     {
         geometry_msgs::PoseStamped pose_stamped;
         pose_stamped.header = pose_msg->header;
@@ -313,20 +316,28 @@ void process()
         m_buf.lock();
         if(!image_buf.empty() && !point_buf.empty() && !pose_buf.empty())
         {
+            //图像的最老帧时间大于位姿，则扔掉最老的位姿，直到图像时间小于等于位姿的时间
             if (image_buf.front()->header.stamp.toSec() > pose_buf.front()->header.stamp.toSec())
             {
-                pose_buf.pop();
+                pose_buf.pop(); 
                 printf("throw pose at beginning\n");
             }
+			//前面的if说明，当前图像的时间小于位姿的时间。
+			//这里判断，图像与点云。执行同样的操作。最老的图像时间小于等于最老的位姿时间以及point时间
             else if (image_buf.front()->header.stamp.toSec() > point_buf.front()->header.stamp.toSec())
             {
                 point_buf.pop();
                 printf("throw point at beginning\n");
             }
-			//得到同一时刻的图像 pose  与 point
+			//图像最新时间大于位姿的最老时间并且point的最新时间大于位姿的最老时间
             else if (image_buf.back()->header.stamp.toSec() >= pose_buf.front()->header.stamp.toSec() 
                 && point_buf.back()->header.stamp.toSec() >= pose_buf.front()->header.stamp.toSec())
             {
+                //条件1 最老的图像时间小于等于最老的位姿时间
+                //条件2 最老的图像时间小于等于最老的point时间。
+                //条件3 最新的图像时间大于最老的位姿时间
+                //条件4 最新的point时间大于最老的位姿时间。
+                //
                 pose_msg = pose_buf.front();
                 pose_buf.pop();
                 while (!pose_buf.empty())
@@ -381,7 +392,8 @@ void process()
             }
             else
                 ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
-            
+
+			
             cv::Mat image = ptr->image;
             // build keyframe
             Vector3d T = Vector3d(pose_msg->pose.pose.position.x,
@@ -391,7 +403,9 @@ void process()
                                      pose_msg->pose.pose.orientation.x,
                                      pose_msg->pose.pose.orientation.y,
                                      pose_msg->pose.pose.orientation.z).toRotationMatrix();
-            if((T - last_t).norm() > SKIP_DIS)
+
+            
+			if((T - last_t).norm() > SKIP_DIS)
             {
                 vector<cv::Point3f> point_3d; 
                 vector<cv::Point2f> point_2d_uv; 
@@ -548,10 +562,16 @@ int main(int argc, char **argv)
     ros::Subscriber sub_point = n.subscribe("/vins_estimator/keyframe_point", 2000, point_callback);
     ros::Subscriber sub_relo_relative_pose = n.subscribe("/vins_estimator/relo_relative_pose", 2000, relo_relative_pose_callback);
 
+	//回环检测的图像
     pub_match_img = n.advertise<sensor_msgs::Image>("match_image", 1000);
+	//当前最新帧的位姿
     pub_camera_pose_visual = n.advertise<visualization_msgs::MarkerArray>("camera_pose_visual", 1000);
+
+	//发布一个短时的里程计数据信息 最近的10帧
     pub_key_odometrys = n.advertise<visualization_msgs::Marker>("key_odometrys", 1000);
+	//在不进行回环检测的情况下，发布整条路径
     pub_vio_path = n.advertise<nav_msgs::Path>("no_loop_path", 1000);
+	//回环检测的信息
     pub_match_points = n.advertise<sensor_msgs::PointCloud>("match_points", 100);
 
     std::thread measurement_process;

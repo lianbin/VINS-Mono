@@ -213,7 +213,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
         // prepare output of VINS
         key_poses.clear();
         for (int i = 0; i <= WINDOW_SIZE; i++)
-            key_poses.push_back(Ps[i]);
+            key_poses.push_back(Ps[i]);//滑动窗口内的所有帧的位置
 
         last_R = Rs[WINDOW_SIZE];
         last_P = Ps[WINDOW_SIZE];
@@ -663,7 +663,8 @@ void Estimator::double2vector()
         drift_correct_yaw = Utility::R2ypr(prev_relo_r).x() - Utility::R2ypr(relo_r).x();
         drift_correct_r = Utility::ypr2R(Vector3d(drift_correct_yaw, 0, 0));
         drift_correct_t = prev_relo_t - drift_correct_r * relo_t;   
-        relo_relative_t = relo_r.transpose() * (Ps[relo_frame_local_index] - relo_t);
+        
+		relo_relative_t = relo_r.transpose() * (Ps[relo_frame_local_index] - relo_t);
         relo_relative_q = relo_r.transpose() * Rs[relo_frame_local_index];
         relo_relative_yaw = Utility::normalizeAngle(Utility::R2ypr(Rs[relo_frame_local_index]).x() - Utility::R2ypr(relo_r).x());
         //cout << "vins relo " << endl;
@@ -853,7 +854,7 @@ void Estimator::optimization()
                 continue;
             ++feature_index;
 			//注意这里的start并不是固定的，也就是重定位的误差函数，并不是只是在回环帧与回环产生帧时间进行重投影误差。
-			//二是根据特征点被窗口内第一次看到的帧所决定。非常重要的一点
+			//而是根据特征点被窗口内第一次看到的帧所决定。非常重要的一点
             int start = it_per_id.start_frame;
 			
             if(start <= relo_frame_local_index)//产生回环的帧，目前在窗口内的索引

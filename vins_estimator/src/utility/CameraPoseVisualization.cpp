@@ -116,6 +116,7 @@ void CameraPoseVisualization::add_pose(const Eigen::Vector3d& p, const Eigen::Qu
 
     geometry_msgs::Point pt_lt, pt_lb, pt_rt, pt_rb, pt_oc, pt_lt0, pt_lt1, pt_lt2;
 
+	//八个点
     Eigen2Point(q * (m_scale *imlt) + p, pt_lt);
     Eigen2Point(q * (m_scale *imlb) + p, pt_lb);
     Eigen2Point(q * (m_scale *imrt) + p, pt_rt);
@@ -125,7 +126,9 @@ void CameraPoseVisualization::add_pose(const Eigen::Vector3d& p, const Eigen::Qu
     Eigen2Point(q * (m_scale *lt2 ) + p, pt_lt2);
     Eigen2Point(q * (m_scale *oc  ) + p, pt_oc);
 
-    // image boundaries
+    // image boundaries，四方形的框
+
+	//一条边
     marker.points.push_back(pt_lt);
     marker.points.push_back(pt_lb);
     marker.colors.push_back(m_image_boundary_color);
@@ -146,7 +149,7 @@ void CameraPoseVisualization::add_pose(const Eigen::Vector3d& p, const Eigen::Qu
     marker.colors.push_back(m_image_boundary_color);
     marker.colors.push_back(m_image_boundary_color);
 
-    // top-left indicator
+    // top-left indicator 左上角的小方框
     marker.points.push_back(pt_lt0);
     marker.points.push_back(pt_lt1);
     marker.colors.push_back(m_image_boundary_color);
@@ -157,6 +160,7 @@ void CameraPoseVisualization::add_pose(const Eigen::Vector3d& p, const Eigen::Qu
     marker.colors.push_back(m_image_boundary_color);
     marker.colors.push_back(m_image_boundary_color);
 
+    //中心到各个点的连线
     // optical center connector
     marker.points.push_back(pt_lt);
     marker.points.push_back(pt_oc);

@@ -22,18 +22,33 @@ static Vector3d last_path(0.0, 0.0, 0.0);
 
 void registerPub(ros::NodeHandle &n)
 {
+    //发布最新的位姿数据，图像中间是通过IMU积分得到的。
     pub_latest_odometry = n.advertise<nav_msgs::Odometry>("imu_propagate", 1000);
+
+	//发布的是所有pub_odometry的历史集合
     pub_path = n.advertise<nav_msgs::Path>("path", 1000);
+	//经过回环检测，重定位之后进行校正的里程计历史集合
     pub_relo_path = n.advertise<nav_msgs::Path>("relocalization_path", 1000);
+	//发布最新的里程计数据，滑动窗口中最新一帧的位姿
     pub_odometry = n.advertise<nav_msgs::Odometry>("odometry", 1000);
+	
     pub_point_cloud = n.advertise<sensor_msgs::PointCloud>("point_cloud", 1000);
     pub_margin_cloud = n.advertise<sensor_msgs::PointCloud>("history_cloud", 1000);
+	//当前滑动窗口内的所有帧的位置
     pub_key_poses = n.advertise<visualization_msgs::Marker>("key_poses", 1000);
+
+	//发布滑动窗口的次新帧的位姿数据
     pub_camera_pose = n.advertise<nav_msgs::Odometry>("camera_pose", 1000);
+	//滑动窗口的次新帧位姿在界面上进行显示
     pub_camera_pose_visual = n.advertise<visualization_msgs::MarkerArray>("camera_pose_visual", 1000);
+	//发布第三最新帧的位姿
     pub_keyframe_pose = n.advertise<nav_msgs::Odometry>("keyframe_pose", 1000);
+	//第三最新帧看到的特征点
     pub_keyframe_point = n.advertise<sensor_msgs::PointCloud>("keyframe_point", 1000);
+
+	//发布body-camera的外参数
     pub_extrinsic = n.advertise<nav_msgs::Odometry>("extrinsic", 1000);
+	//发布重定位得到的相对位姿
     pub_relo_relative_pose=  n.advertise<nav_msgs::Odometry>("relo_relative_pose", 1000);
 
     cameraposevisual.setScale(1);
@@ -42,6 +57,8 @@ void registerPub(ros::NodeHandle &n)
     keyframebasevisual.setLineWidth(0.01);
 }
 
+
+//发布最新的里程计信息（在图像间隔期间，由IMU进行积分）
 void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, const Eigen::Vector3d &V, const std_msgs::Header &header)
 {
     Eigen::Quaterniond quadrotor_Q = Q ;
@@ -134,6 +151,8 @@ void pubOdometry(const Estimator &estimator, const std_msgs::Header &header)
         path.poses.push_back(pose_stamped);
         pub_path.publish(path);
 
+
+
         Vector3d correct_t;
         Vector3d correct_v;
         Quaterniond correct_q;
@@ -152,6 +171,7 @@ void pubOdometry(const Estimator &estimator, const std_msgs::Header &header)
         relo_path.header.frame_id = "world";
         relo_path.poses.push_back(pose_stamped);
         pub_relo_path.publish(relo_path);
+
 
         // write result to file
         ofstream foutC(VINS_RESULT_PATH, ios::app);
@@ -209,11 +229,12 @@ void pubKeyPoses(const Estimator &estimator, const std_msgs::Header &header)
 
 void pubCameraPose(const Estimator &estimator, const std_msgs::Header &header)
 {
-    int idx2 = WINDOW_SIZE - 1;
+    int idx2 = WINDOW_SIZE - 1;//次新帧
 
     if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
     {
         int i = idx2;
+		//得到相机的位姿
         Vector3d P = estimator.Ps[i] + estimator.Rs[i] * estimator.tic[0];
         Quaterniond R = Quaterniond(estimator.Rs[i] * estimator.ric[0]);
 
@@ -296,6 +317,7 @@ void pubPointCloud(const Estimator &estimator, const std_msgs::Header &header)
 }
 
 
+//发布world-body以及body-camera之间的变换
 void pubTF(const Estimator &estimator, const std_msgs::Header &header)
 {
     if( estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
@@ -348,9 +370,11 @@ void pubTF(const Estimator &estimator, const std_msgs::Header &header)
 void pubKeyframe(const Estimator &estimator)
 {
     // pub camera pose, 2D-3D points of keyframe
+    //边缘化最老帧的情况下
     if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR && estimator.marginalization_flag == 0)
     {
-        int i = WINDOW_SIZE - 2;
+        //第三最新帧
+        int i = WINDOW_SIZE - 2; 
         //Vector3d P = estimator.Ps[i] + estimator.Rs[i] * estimator.tic[0];
         Vector3d P = estimator.Ps[i];
         Quaterniond R = Quaterniond(estimator.Rs[i]);
@@ -406,6 +430,7 @@ void pubKeyframe(const Estimator &estimator)
         pub_keyframe_point.publish(point_cloud);
     }
 }
+
 
 
 void pubRelocalization(const Estimator &estimator)
