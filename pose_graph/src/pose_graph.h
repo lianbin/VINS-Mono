@@ -53,7 +53,7 @@ public:
 	double yaw_drift;
 	Matrix3d r_drift;
 	// world frame( base sequence or first sequence)<----> cur sequence frame  
-	Vector3d w_t_vio;
+	Vector3d w_t_vio; //从世界坐标系到当前地图块的变换。
 	Matrix3d w_r_vio;
 
 

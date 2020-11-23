@@ -99,6 +99,6 @@ public:
 
 	bool has_loop;
 	int loop_index;
-	Eigen::Matrix<double, 8, 1 > loop_info;
+	Eigen::Matrix<double, 8, 1 > loop_info;//Told_cur
 };
 

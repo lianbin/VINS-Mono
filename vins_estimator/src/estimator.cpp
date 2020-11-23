@@ -1223,6 +1223,8 @@ void Estimator::setReloFrame(double _frame_stamp, int _frame_index, vector<Vecto
     relo_frame_index = _frame_index;
     match_points.clear();
     match_points = _match_points;
+	
+	//回环帧在后端中的位姿
     prev_relo_t = _relo_t;
     prev_relo_r = _relo_r;
     for(int i = 0; i < WINDOW_SIZE; i++)
@@ -1235,7 +1237,7 @@ void Estimator::setReloFrame(double _frame_stamp, int _frame_index, vector<Vecto
             relo_frame_local_index = i;
             relocalization_info = 1;//设置重定位标志
             for (int j = 0; j < SIZE_POSE; j++)
-                relo_Pose[j] = para_Pose[i][j];//记录当前relo帧的状态
+                relo_Pose[j] = para_Pose[i][j];//产生回环的帧在滑动窗口中的位姿
         }
     }
 }

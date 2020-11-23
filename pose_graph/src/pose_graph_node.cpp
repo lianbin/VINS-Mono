@@ -90,6 +90,7 @@ void new_sequence()
     m_buf.unlock();
 }
 
+
 void image_callback(const sensor_msgs::ImageConstPtr &image_msg)
 {
     //ROS_INFO("image_callback!");
@@ -414,20 +415,23 @@ void process()
 
                 for (unsigned int i = 0; i < point_msg->points.size(); i++)
                 {
-                    //世界坐标系的点
+                    //世界坐标
                     cv::Point3f p_3d;
                     p_3d.x = point_msg->points[i].x;
                     p_3d.y = point_msg->points[i].y;
                     p_3d.z = point_msg->points[i].z;
                     point_3d.push_back(p_3d);
 
-					//在第一观测帧上的2d信息
+					//在第三最新帧上的2d信息
                     cv::Point2f p_2d_uv, p_2d_normal;
                     double p_id;
+					//归一化坐标
                     p_2d_normal.x = point_msg->channels[i].values[0];
                     p_2d_normal.y = point_msg->channels[i].values[1];
+					//像素坐标
                     p_2d_uv.x = point_msg->channels[i].values[2];
                     p_2d_uv.y = point_msg->channels[i].values[3];
+					//特征点的id号
                     p_id = point_msg->channels[i].values[4];
                     point_2d_normal.push_back(p_2d_normal);
                     point_2d_uv.push_back(p_2d_uv);

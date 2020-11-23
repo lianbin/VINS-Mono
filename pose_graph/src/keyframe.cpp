@@ -17,14 +17,17 @@ KeyFrame::KeyFrame(double _time_stamp, int _index, Vector3d &_vio_T_w_i, Matrix3
 {
 	time_stamp = _time_stamp;
 	index = _index;
+	//初始化关键帧的时候，vio给给过来的定位
 	vio_T_w_i = _vio_T_w_i;
 	vio_R_w_i = _vio_R_w_i;
+	
 	T_w_i = vio_T_w_i;
 	R_w_i = vio_R_w_i;
 	origin_vio_T = vio_T_w_i;		
 	origin_vio_R = vio_R_w_i;
 	image = _image.clone();
 	cv::resize(image, thumbnail, cv::Size(80, 60));
+	//在里程计的世界坐标系下的世界点
 	point_3d = _point_3d;
 	point_2d_uv = _point_2d_uv;
 	point_2d_norm = _point_2d_norm;
@@ -85,6 +88,7 @@ void KeyFrame::computeWindowBRIEFPoint()
 	extractor(image, window_keypoints, window_brief_descriptors);
 }
 
+//提取FAST特征点，并且计算每个特征点的描述子
 void KeyFrame::computeBRIEFPoint()
 {
 	BriefExtractor extractor(BRIEF_PATTERN_FILE.c_str());
@@ -227,7 +231,9 @@ void KeyFrame::PnPRANSAC(const vector<cv::Point2f> &matched_2d_old_norm,
 
     cv::Mat inliers;
     TicToc t_pnp_ransac;
-     
+
+	//参考 https://blog.csdn.net/xuelangwin/article/details/80847337
+	//这里使用迭代的方法求解，以当前帧的位姿作为初值进行迭代
     if (CV_MAJOR_VERSION < 3)
         solvePnPRansac(matched_3d, matched_2d_old_norm, K, D, rvec, t, true, 100, 10.0 / 460.0, 100, inliers);
     else
@@ -271,7 +277,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	vector<cv::Point3f> matched_3d;
 	vector<double> matched_id;
 	vector<uchar> status;
-
+    //当前帧信息
 	matched_3d = point_3d;
 	matched_2d_cur = point_2d_uv;
 	matched_2d_cur_norm = point_2d_norm;
@@ -304,7 +310,9 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    }
 	#endif
 	//printf("search by des\n");
-	//匹配的时候，用的是harris特征点的描述子
+	//特征匹配，匹配的时候，用的是harris特征点的描述子
+	//所以是通过FAST检测回环，得到两帧之间差生回环关系之后
+	//使用hrris特征点的描述子进行关联匹配
 	searchByBRIEFDes(matched_2d_old, matched_2d_old_norm, status, old_kf->brief_descriptors, old_kf->keypoints, old_kf->keypoints_norm);
 	reduceVector(matched_2d_cur, status);
 	reduceVector(matched_2d_old, status);
@@ -413,6 +421,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)//需要最少达到25个匹配
 	{
 		status.clear();
+		//根据PNP求解回环帧的位姿
 	    PnPRANSAC(matched_2d_old_norm, matched_3d, status, PnP_T_old, PnP_R_old);
 	    reduceVector(matched_2d_cur, status);
 	    reduceVector(matched_2d_old, status);
@@ -481,6 +490,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    //得到相对位姿Told_cur
 	    relative_t = PnP_R_old.transpose() * (origin_vio_T - PnP_T_old);
 	    relative_q = PnP_R_old.transpose() * origin_vio_R;
+		
 	    relative_yaw = Utility::normalizeAngle(Utility::R2ypr(origin_vio_R).x() - Utility::R2ypr(PnP_R_old).x());
 	    //printf("PNP relative\n");
 	    //cout << "pnp relative_t " << relative_t.transpose() << endl;
@@ -495,6 +505,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    	loop_info << relative_t.x(), relative_t.y(), relative_t.z(),
 	    	             relative_q.w(), relative_q.x(), relative_q.y(), relative_q.z(),
 	    	             relative_yaw;
+			
 	    	if(FAST_RELOCALIZATION)
 	    	{
 			    sensor_msgs::PointCloud msg_match_points;
@@ -507,7 +518,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 		            p.z = matched_id[i];
 		            msg_match_points.points.push_back(p);
 			    }
-				//
+				//这里给的是在后端中的位姿
 			    Eigen::Vector3d T = old_kf->T_w_i; 
 			    Eigen::Matrix3d R = old_kf->R_w_i;
 			    Quaterniond Q(R);
@@ -529,6 +540,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	//printf("loop final use num %d %lf--------------- \n", (int)matched_2d_cur.size(), t_match.toc());
 	return false;
 }
+
 
 
 int KeyFrame::HammingDis(const BRIEF::bitset &a, const BRIEF::bitset &b)
@@ -555,6 +567,7 @@ void KeyFrame::updatePose(const Eigen::Vector3d &_T_w_i, const Eigen::Matrix3d &
     T_w_i = _T_w_i;
     R_w_i = _R_w_i;
 }
+
 
 void KeyFrame::updateVioPose(const Eigen::Vector3d &_T_w_i, const Eigen::Matrix3d &_R_w_i)
 {

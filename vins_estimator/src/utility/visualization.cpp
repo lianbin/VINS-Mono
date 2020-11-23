@@ -403,7 +403,7 @@ void pubKeyframe(const Estimator &estimator)
             if(it_per_id.start_frame < WINDOW_SIZE - 2 && it_per_id.start_frame + frame_size - 1 >= WINDOW_SIZE - 2 && it_per_id.solve_flag == 1)
             {
 
-                int imu_i = it_per_id.start_frame;
+                int imu_i = it_per_id.start_frame;//第一观测帧
 				//在观测帧中的相机坐标系下的坐标
                 Vector3d pts_i = it_per_id.feature_per_frame[0].point * it_per_id.estimated_depth;
 				//相机坐标->IMU坐标->世界坐标
