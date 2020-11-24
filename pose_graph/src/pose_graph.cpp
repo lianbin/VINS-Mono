@@ -919,6 +919,7 @@ void PoseGraph::loadPoseGraph()
     base_sequence = 0;
 }
 
+
 void PoseGraph::publish()
 {
     for (int i = 1; i <= sequence_cnt; i++)
@@ -955,16 +956,20 @@ void PoseGraph::updateKeyFrameLoop(int index, Eigen::Matrix<double, 8, 1 > &_loo
             Quaterniond relative_q;
             relative_t = kf->getLoopRelativeT();
             relative_q = (kf->getLoopRelativeQ()).toRotationMatrix();
+			//根据偏移将回环帧位姿，变换到当前帧的位姿，
             w_P_cur = w_R_old * relative_t + w_P_old;
             w_R_cur = w_R_old * relative_q;
             double shift_yaw;
             Matrix3d shift_r;
             Vector3d shift_t; 
+			//由于回环帧的位姿是在
+			//vio中计算的，所以在计算偏移量的时候，也要使用vio位姿
             shift_yaw = Utility::R2ypr(w_R_cur).x() - Utility::R2ypr(vio_R_cur).x();
             shift_r = Utility::ypr2R(Vector3d(shift_yaw, 0, 0));
             shift_t = w_P_cur - w_R_cur * vio_R_cur.transpose() * vio_P_cur; 
-
+   
             m_drift.lock();
+			//得到需要给vio位姿的偏移量
             yaw_drift = shift_yaw;
             r_drift = shift_r;
             t_drift = shift_t;

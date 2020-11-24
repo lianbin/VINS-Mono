@@ -655,6 +655,7 @@ void Estimator::double2vector()
     { 
         Matrix3d relo_r;
         Vector3d relo_t;
+		//relo_Pose优化的结果是回环帧的位姿
         relo_r = rot_diff * Quaterniond(relo_Pose[6], relo_Pose[3], relo_Pose[4], relo_Pose[5]).normalized().toRotationMatrix();
         relo_t = rot_diff * Vector3d(relo_Pose[0] - para_Pose[0][0],
                                      relo_Pose[1] - para_Pose[0][1],
@@ -663,7 +664,10 @@ void Estimator::double2vector()
         drift_correct_yaw = Utility::R2ypr(prev_relo_r).x() - Utility::R2ypr(relo_r).x();
         drift_correct_r = Utility::ypr2R(Vector3d(drift_correct_yaw, 0, 0));
         drift_correct_t = prev_relo_t - drift_correct_r * relo_t;   
-        
+
+		//得到的是回环帧与检车到回环的帧之间的相对位姿变换。
+		//Rs = Rrelo * Rrelative
+		//Rrelative = Rrelo^-1Rs 表示从Rs变换到Rrelo
 		relo_relative_t = relo_r.transpose() * (Ps[relo_frame_local_index] - relo_t);
         relo_relative_q = relo_r.transpose() * Rs[relo_frame_local_index];
         relo_relative_yaw = Utility::normalizeAngle(Utility::R2ypr(Rs[relo_frame_local_index]).x() - Utility::R2ypr(relo_r).x());
@@ -853,7 +857,7 @@ void Estimator::optimization()
             if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
                 continue;
             ++feature_index;
-			//注意这里的start并不是固定的，也就是重定位的误差函数，并不是只是在回环帧与回环产生帧时间进行重投影误差。
+			//注意这里的start并不是固定的，也就是重定位的误差函数。
 			//而是根据特征点被窗口内第一次看到的帧所决定。非常重要的一点
             int start = it_per_id.start_frame;
 			
@@ -866,11 +870,16 @@ void Estimator::optimization()
 				//找到匹配的id号
                 if((int)match_points[retrive_feature_index].z() == it_per_id.feature_id)
                 {
+                    //在回环帧中的观测
                     Vector3d pts_j = Vector3d(match_points[retrive_feature_index].x(), match_points[retrive_feature_index].y(), 1.0);
+
+					//在滑动窗口中的观测
                     Vector3d pts_i = it_per_id.feature_per_frame[0].point;
-                    
+
+					//重投影误差
                     ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
-					//构建重投影误差，
+					//构建重投影误差
+					//relo_Pose的初值设置为产生回环帧的位姿，优化之后的结果是回环帧的位姿。
                     problem.AddResidualBlock(f, loss_function, para_Pose[start], relo_Pose, para_Ex_Pose[0], para_Feature[feature_index]);
                     retrive_feature_index++;
                 }     
@@ -1237,7 +1246,7 @@ void Estimator::setReloFrame(double _frame_stamp, int _frame_index, vector<Vecto
             relo_frame_local_index = i;
             relocalization_info = 1;//设置重定位标志
             for (int j = 0; j < SIZE_POSE; j++)
-                relo_Pose[j] = para_Pose[i][j];//产生回环的帧在滑动窗口中的位姿
+                relo_Pose[j] = para_Pose[i][j];//!!!!使用产生回环的帧，作为回环帧的初始位姿
         }
     }
 }
