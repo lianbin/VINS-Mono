@@ -372,7 +372,7 @@ bool Estimator::initialStructure()
         R_pnp = tmp_R_pnp.transpose();//Rwc
         MatrixXd T_pnp;
         cv::cv2eigen(t, T_pnp);
-        T_pnp = R_pnp * (-T_pnp);//tcw
+        T_pnp = R_pnp * (-T_pnp);//twc
 		//注意!!!!!旋转已经表达为体坐标系的旋转，平移这里，似乎还是相机坐标系的平移
         frame_it->second.R = R_pnp * RIC[0].transpose();
         frame_it->second.T = T_pnp;
