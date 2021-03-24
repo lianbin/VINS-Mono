@@ -500,8 +500,8 @@ void PoseGraph::optimize4DoF()
 				//添加三个平移的自由度参数
                 problem.AddParameterBlock(t_array[i], 3);
 
-				//如果是回环帧，那么固定回环帧的姿态
-				//
+				
+				//固定历史上第一个回环帧的状态
                 if ((*it)->index == first_looped_index || (*it)->sequence == 0)//(*it)->sequence == 0默认是从1开始的
                 {   
                     problem.SetParameterBlockConstant(euler_array[i]);
@@ -532,7 +532,7 @@ void PoseGraph::optimize4DoF()
                                             t_array[i]);
                   }
                 }
-
+              
                 //add loop edge 添加回环误差，优化的都是跟回环相关的帧
                 if((*it)->has_loop)//产生回环的关键帧（这块不只是当前产生回环，包括之前已经产生过回环的帧）
                 {
@@ -608,7 +608,7 @@ void PoseGraph::optimize4DoF()
             //cout << "yaw drift " << yaw_drift << endl;
 
 			//注意！！！！！！！！！！这里的it的初值。并不是轮训整个keyframelist。
-			//如果优化的过程较长，优化的过程中，又加入了一些新的帧，那么也同事
+			//如果优化的过程较长，优化的过程中，又加入了一些新的帧,则这些新的帧也同样需要矫正
             it++;
             for (; it != keyframelist.end(); it++)
             {
@@ -644,7 +644,7 @@ void PoseGraph::updatePath()
         ofstream loop_path_file_tmp(VINS_RESULT_PATH, ios::out);
         loop_path_file_tmp.close();
     }
-
+    
     for (it = keyframelist.begin(); it != keyframelist.end(); it++)
     {
         Vector3d P;
